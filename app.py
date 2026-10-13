@@ -7,6 +7,43 @@ st.set_page_config(
 
 import streamlit as st
 
+import streamlit as st
+
+# Custom CSS ulkoasun fiksaamiseen
+st.markdown("""
+    <style>
+    /* Taustan ja tekstien perusvärit */
+    .stApp {
+        background-color: #0e1117;
+        color: #ffffff;
+    }
+    
+    /* Metrikkakorttien taustat ja tekstit */
+    [data-testid="stMetricValue"] {
+        color: #00d4b1 !important;
+        font-size: 2rem !important;
+        font-weight: 700 !important;
+    }
+    [data-testid="stMetricLabel"] {
+        color: #a3adc2 !important;
+        font-size: 0.9rem !important;
+    }
+    
+    /* Sivupalkin (Sidebar) linkit ja tekstit */
+    [data-testid="stSidebar"] {
+        background-color: #161b22 !important;
+    }
+    [data-testid="stSidebar"] a, [data-testid="stSidebar"] button {
+        color: #e6edf3 !important;
+    }
+    
+    /* Otsikoiden tyylit */
+    h1, h2, h3 {
+        color: #ffffff !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 st.set_page_config(
     page_title="Matkakojelauta",
     page_icon="✈️",
