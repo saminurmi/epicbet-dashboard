@@ -19,8 +19,8 @@ initial_data = [
     },
     {
         "Kategoria": "Lennot",
-        "Kuvaus": "Helsinki - Bangkok",
-        "Hinta (€)": 0.00,
+        "Kuvaus": "Tukholma - Bangkok",
+        "Hinta (€)": 680.00,
         "Tila": "Suunnitelma",
     },
     {
