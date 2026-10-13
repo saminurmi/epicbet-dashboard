@@ -60,7 +60,7 @@ col3.metric("Jäljellä", f"{remaining:,.2f} €")
 st.markdown("---")
 
 # Kulutaulukko
-st.subheader("📋 Kuerittely")
+st.subheader("📋 Kuluerittely")
 
 edited_df = st.data_editor(
     st.session_state.expenses,
