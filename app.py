@@ -10,36 +10,33 @@ import streamlit as st
 import streamlit as st
 
 # Custom CSS ulkoasun fiksaamiseen
+import streamlit as st
+
 st.markdown("""
     <style>
-    /* Taustan ja tekstien perusvärit */
-    .stApp {
-        background-color: #0e1117;
-        color: #ffffff;
+    /* Pakotetaan sivupalkin navigaatiolinkit ja tekstit näkyviin */
+    [data-testid="stSidebar"] * {
+        color: #f0f6fc !important;
     }
     
-    /* Metrikkakorttien taustat ja tekstit */
+    /* Hakukenttä ja aktiiviset elementit sivupalkissa */
+    [data-testid="stSidebar"] input {
+        color: #ffffff !important;
+        background-color: #21262d !important;
+    }
+
+    /* Sivupalkin linkkien leijutustila (hover) */
+    [data-testid="stSidebarNav"] a:hover {
+        background-color: #30363d !important;
+    }
+
+    /* Metrikkakortit kuntoon */
     [data-testid="stMetricValue"] {
         color: #00d4b1 !important;
-        font-size: 2rem !important;
-        font-weight: 700 !important;
+        font-weight: bold;
     }
     [data-testid="stMetricLabel"] {
-        color: #a3adc2 !important;
-        font-size: 0.9rem !important;
-    }
-    
-    /* Sivupalkin (Sidebar) linkit ja tekstit */
-    [data-testid="stSidebar"] {
-        background-color: #161b22 !important;
-    }
-    [data-testid="stSidebar"] a, [data-testid="stSidebar"] button {
-        color: #e6edf3 !important;
-    }
-    
-    /* Otsikoiden tyylit */
-    h1, h2, h3 {
-        color: #ffffff !important;
+        color: #8b949e !important;
     }
     </style>
 """, unsafe_allow_html=True)
