@@ -359,18 +359,18 @@ if st.session_state.bets:
 
   st.markdown("---")
 
-  # Otsikkorivi
-  h1, h2, h3, h4, h5, h6, h7 = st.columns([1.3, 1.8, 1.2, 0.7, 1.5, 0.9, 0.5])
+  # Otsikkorivi reilulla tilalla tila-sarakkeelle
+  h1, h2, h3, h4, h5, h6, h7 = st.columns([1.2, 1.8, 1.1, 0.8, 2.2, 0.9, 0.4])
   h1.write("**Sarja & Aika**")
   h2.write("**Ottelu & Valinta**")
   h3.write("**Kerroin / EV**")
   h4.write("**Panos**")
-  h5.write("**Tila**")
+  h5.write("**Tila (Valitse)**")
   h6.write("**Paluu (€)**")
   h7.write("")
 
   for idx, bet in enumerate(st.session_state.bets):
-    c1, c2, c3, c4, c5, c6, c7 = st.columns([1.3, 1.8, 1.2, 0.7, 1.5, 0.9, 0.5])
+    c1, c2, c3, c4, c5, c6, c7 = st.columns([1.2, 1.8, 1.1, 0.8, 2.2, 0.9, 0.4])
 
     date_str = bet.get("Päiväys", "")
     c1.write(f"**{bet['Sarja']}**\n\n`{date_str}`")
@@ -378,26 +378,39 @@ if st.session_state.bets:
     c3.write(f"@{bet['Kerroin']} | EV: {bet['EV %']}")
     c4.write(f"**{bet['Panos (€)']} €**")
 
-    status_options = ["Avoin", "🟢 Voitto", "🔴 Tappio", "🟡 Mitätöity"]
-    current_status = bet.get("Tila", "Avoin")
-    status_idx = (
-        status_options.index(current_status)
-        if current_status in status_options
-        else 0
-    )
+    # Määritetään nykyinen tila yhteensopivasti
+    raw_status = str(bet.get("Tila", "Avoin"))
+    if "Voitto" in raw_status:
+      current_clean = "Voitto"
+    elif "Tappio" in raw_status:
+      current_clean = "Tappio"
+    elif "Mitätöity" in raw_status:
+      current_clean = "Mitätöity"
+    else:
+      current_clean = "Avoin"
 
-    new_status = c5.selectbox(
+    # Käytetään segmented_controlia, joka näkyy selkeinä nappeina
+    new_status = c5.segmented_control(
         "Tila",
-        status_options,
-        index=status_idx,
-        key=f"status_{idx}",
+        options=["Avoin", "Voitto 🟢", "Tappio 🔴", "Mitätöity 🟡"],
+        default={
+            "Avoin": "Avoin",
+            "Voitto": "Voitto 🟢",
+            "Tappio": "Tappio 🔴",
+            "Mitätöity": "Mitätöity 🟡",
+        }.get(current_clean, "Avoin"),
+        key=f"status_seg_{idx}",
         label_visibility="collapsed",
     )
 
+    # Laske ehdotettu palautus
     default_return = bet.get("Paluu (€)", 0.0)
     if new_status == "Voitto 🟢" and default_return == 0.0:
       default_return = round(bet["Panos (€)"] * bet["Kerroin"], 2)
-    elif new_status in ["Tappio 🔴", "Avoin"] and current_status != new_status:
+    elif (
+        new_status in ["Tappio 🔴", "Avoin"]
+        and current_clean != new_status.split()[0]
+    ):
       default_return = 0.0
     elif new_status == "Mitätöity 🟡":
       default_return = float(bet["Panos (€)"])
@@ -410,7 +423,10 @@ if st.session_state.bets:
         label_visibility="collapsed",
     )
 
-    if new_status != bet.get("Tila") or new_return != bet.get("Paluu (€)"):
+    # Tallenna muutokset
+    if (
+        new_status and new_status != bet.get("Tila")
+    ) or new_return != bet.get("Paluu (€)"):
       st.session_state.bets[idx]["Tila"] = new_status
       st.session_state.bets[idx]["Paluu (€)"] = new_return
       save_bets_to_file(st.session_state.bets)
