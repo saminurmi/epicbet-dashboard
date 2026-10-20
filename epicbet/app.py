@@ -24,8 +24,8 @@ DEFAULT_BETS = [
         "Arvio %": "50.0%",
         "EV %": "+21.0%",
         "Panos (€)": 1.66,
-        "Tila": "⏳ Avoin",
-        "Paluu (€)": 0.0,
+        "Tila": "Voitto 🟢",
+        "Paluu (€)": 4.02,
     },
     {
         "Päiväys": "2026-10-20 08:59",
@@ -37,7 +37,7 @@ DEFAULT_BETS = [
         "Arvio %": "50.0%",
         "EV %": "+1.0%",
         "Panos (€)": 0.11,
-        "Tila": "⏳ Avoin",
+        "Tila": "Avoin",
         "Paluu (€)": 0.0,
     },
     {
@@ -50,7 +50,7 @@ DEFAULT_BETS = [
         "Arvio %": "50.0%",
         "EV %": "+35.0%",
         "Panos (€)": 1.00,
-        "Tila": "⏳ Avoin",
+        "Tila": "Avoin",
         "Paluu (€)": 0.0,
     },
     {
@@ -63,7 +63,7 @@ DEFAULT_BETS = [
         "Arvio %": "50.0%",
         "EV %": "+120.0%",
         "Panos (€)": 1.00,
-        "Tila": "⏳ Avoin",
+        "Tila": "Avoin",
         "Paluu (€)": 0.0,
     },
     {
@@ -76,7 +76,7 @@ DEFAULT_BETS = [
         "Arvio %": "50.0%",
         "EV %": "+41.5%",
         "Panos (€)": 2.00,
-        "Tila": "⏳ Avoin",
+        "Tila": "Avoin",
         "Paluu (€)": 0.0,
     },
     {
@@ -89,7 +89,7 @@ DEFAULT_BETS = [
         "Arvio %": "50.0%",
         "EV %": "-15.0%",
         "Panos (€)": 1.00,
-        "Tila": "⏳ Avoin",
+        "Tila": "Avoin",
         "Paluu (€)": 0.0,
     },
 ]
@@ -324,7 +324,7 @@ if st.sidebar.button("➕ Tallenna veto seurantaan"):
       "Arvio %": f"{prob_percent:.1f}%",
       "EV %": f"{ev*100:+.1f}%",
       "Panos (€)": actual_stake,
-      "Tila": "⏳ Avoin",
+      "Tila": "Avoin",
       "Paluu (€)": 0.0,
   }
   st.session_state.bets.append(new_bet)
@@ -359,43 +359,57 @@ if st.session_state.bets:
 
   st.markdown("---")
 
-  status_options = ["⏳ Avoin", "🟢 Voitto", "🔴 Tappio", "🟡 Mitätöity"]
+  status_options = ["Avoin", "Voitto 🟢", "Tappio 🔴", "Mitätöity 🟡"]
 
   for idx, bet in enumerate(st.session_state.bets):
-    c1, c2, c3, c4 = st.columns([1.5, 2.5, 1.2, 1.0])
+    c1, c2, c3, c4 = st.columns([1.8, 2.2, 1.2, 1.3])
 
+    sarja = bet.get("Sarja", "")
     date_str = bet.get("Päiväys", "")
-    c1.write(f"**{bet['Sarja']}**\n\n`{date_str}`")
-    c2.write(f"**{bet['Ottelu']}**\n\n👉 *{bet['Valinta']}* (@{bet['Kerroin']})")
-    c3.write(
-        f"Panos: **{bet['Panos (€)']} €**\n\nEV: **{bet.get('EV %', '')}**"
+
+    # Siisti harmaa päivämäärä ilman vihreitä laatikoita
+    if date_str and date_str.strip():
+      c1.markdown(
+          f"**{sarja}**<br><span style='color: #888888; font-size:"
+          f" 0.85em;'>{date_str}</span>",
+          unsafe_allow_html=True,
+      )
+    else:
+      c1.markdown(f"**{sarja}**")
+
+    c2.markdown(
+        f"**{bet['Ottelu']}**<br>👉 *{bet['Valinta']}* (@{bet['Kerroin']})",
+        unsafe_allow_html=True,
+    )
+    c3.markdown(
+        f"Panos: **{bet['Panos (€)']} €**<br>EV: **{bet.get('EV %', '')}**",
+        unsafe_allow_html=True,
     )
 
-    # Selvitetään aiemmin valittu tila
-    raw_s = str(bet.get("Tila", "⏳ Avoin"))
+    # Tilan tunnistus
+    raw_s = str(bet.get("Tila", "Avoin"))
     if "Voitto" in raw_s:
-      current_clean = "🟢 Voitto"
+      current_clean = "Voitto 🟢"
     elif "Tappio" in raw_s:
-      current_clean = "🔴 Tappio"
+      current_clean = "Tappio 🔴"
     elif "Mitätöity" in raw_s:
-      current_clean = "🟡 Mitätöity"
+      current_clean = "Mitätöity 🟡"
     else:
-      current_clean = "⏳ Avoin"
+      current_clean = "Avoin"
 
-    # Klikattavat napit tilalle (Segmented Control)
-    new_status = c4.segmented_control(
+    # Tilavalikko
+    new_status = c4.selectbox(
         "Tila",
-        options=status_options,
-        default=current_clean,
-        key=f"seg_status_{idx}",
+        status_options,
+        index=status_options.index(current_clean)
+        if current_clean in status_options
+        else 0,
+        key=f"sb_status_{idx}",
         label_visibility="collapsed",
     )
 
-    if not new_status:
-      new_status = current_clean
-
-    # Rivi palautussummalle ja poistonapille
-    cc1, cc2 = st.columns([2.0, 0.5])
+    # Rivi palautussummalle ja poistolle
+    cc1, cc2 = st.columns([2.0, 0.8])
 
     default_return = bet.get("Paluu (€)", 0.0)
     if "Voitto" in new_status and default_return == 0.0:
