@@ -424,13 +424,21 @@ if st.session_state.bets:
         "Toteutunut paluu (€)",
         value=float(default_return),
         step=0.5,
-        key=f"ret_input_{idx}",
+        key=f"ret_input_{idx}_{bet.get('Ottelu', '')}",
     )
 
     # Työnnetään poistonappia alas, jotta se osuu täsmälleen syötekentän viereen
     cc2.markdown(
         "<div style='margin-top: 28px;'></div>", unsafe_allow_html=True
     )
+    if cc2.button(
+        "🗑️ Poista",
+        key=f"del_btn_{idx}_{bet.get('Ottelu', '')}",
+        use_container_width=True,
+    ):
+      st.session_state.bets.pop(idx)
+      save_bets_to_file(st.session_state.bets)
+      st.rerun()
     if cc2.button("🗑️ Poista", key=f"del_btn_{idx}", use_container_width=True):
       st.session_state.bets.pop(idx)
       save_bets_to_file(st.session_state.bets)
