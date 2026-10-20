@@ -362,15 +362,18 @@ if st.session_state.bets:
   status_options = ["Avoin", "Voitto 🟢", "Tappio 🔴", "Mitätöity 🟡"]
 
   for idx, bet in enumerate(st.session_state.bets):
-    # Tila-sarakkeelle annettu enemmän tilaa (1.5), jotta emojit mahtuvat väljästi
     c1, c2, c3, c4 = st.columns([1.5, 2.5, 1.2, 1.5])
 
     sarja = bet.get("Sarja", "")
     date_str = bet.get("Päiväys", "")
 
-    # Päiväys ilman koodiblokin heittomerkkejä
+    # Siisti harmaa päivämäärä ilman häiritseviä vihreitä laatikoita
     if date_str and date_str.strip():
-      c1.write(f"**{sarja}**\n\n{date_str}")
+      c1.write(
+          f"**{sarja}**\n\n<span style='color: gray; font-size:"
+          f" 0.85em;'>{date_str}</span>",
+          unsafe_allow_html=True,
+      )
     else:
       c1.write(f"**{sarja}**")
 
