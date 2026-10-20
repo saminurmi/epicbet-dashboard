@@ -161,12 +161,12 @@ def fetch_nhl_matches():
 st.sidebar.header("⚙️ EV & Kelly -Laskuri")
 
 current_bankroll = st.sidebar.number_input(
-    "Nykyinen kassa (€)", value=44.90, step=1.0
-)
-target_bankroll = st.sidebar.number_input(
-    "Tavoitesaldo (€)", value=60.0, step=1.0
+    "Nykyinen kassa (€)", value=44.90, step=1.0, key="current_bankroll_input"
 )
 
+target_bankroll = st.sidebar.number_input(
+    "Tavoitesaldo (€)", value=60.0, step=1.0, key="target_bankroll_input"
+)
 st.sidebar.markdown("---")
 st.sidebar.subheader("🏀 Päivän ottelut & Kohde")
 
@@ -204,10 +204,27 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("📊 1X2 Kertoimet & Bookkerin Arvio")
 
 col_o1, col_ox, col_o2 = st.sidebar.columns(3)
-odds_1 = col_o1.number_input("1 (Koti)", value=2.20, min_value=1.01, step=0.01)
-odds_x = col_ox.number_input("X (Tasa)", value=4.33, min_value=1.01, step=0.01)
-odds_2 = col_o2.number_input("2 (Vieras)", value=2.75, min_value=1.01, step=0.01)
-
+odds_1 = col_o1.number_input(
+    "1 (Koti)",
+    value=2.20,
+    min_value=1.01,
+    step=0.01,
+    key="odds_1_input",
+)
+odds_x = col_ox.number_input(
+    "X (Tasa)",
+    value=4.33,
+    min_value=1.01,
+    step=0.01,
+    key="odds_x_input",
+)
+odds_2 = col_o2.number_input(
+    "2 (Vieras)",
+    value=2.75,
+    min_value=1.01,
+    step=0.01,
+    key="odds_2_input",
+)
 imp_1 = 1 / odds_1
 imp_x = 1 / odds_x
 imp_2 = 1 / odds_2
@@ -263,8 +280,13 @@ elif preset_choice == fair_str:
   prob_percent = round(suggested_p, 1)
 else:
   prob_percent = st.sidebar.number_input(
-      "Syötä tarkka %-arvio", value=50.0, min_value=1.0, max_value=99.0, step=0.5
-  )
+    "Syötä tarkka %-arvio",
+    value=50.0,
+    min_value=1.0,
+    max_value=99.0,
+    step=0.5,
+    key="prob_percent_input",
+)
 
 est_prob = prob_percent / 100.0
 fair_odds = 1.0 / est_prob if est_prob > 0 else 0.0
@@ -294,6 +316,7 @@ actual_stake = st.sidebar.number_input(
     value=float(round(default_stake, 2)),
     min_value=0.10,
     step=0.10,
+    key="actual_stake_input",
 )
 
 st.sidebar.markdown("---")
