@@ -24,7 +24,7 @@ DEFAULT_BETS = [
         "Arvio %": "50.0%",
         "EV %": "+21.0%",
         "Panos (€)": 1.66,
-        "Tila": "Avoin",
+        "Tila": "⏳ Avoin",
         "Paluu (€)": 0.0,
     },
     {
@@ -37,7 +37,7 @@ DEFAULT_BETS = [
         "Arvio %": "50.0%",
         "EV %": "+1.0%",
         "Panos (€)": 0.11,
-        "Tila": "Avoin",
+        "Tila": "⏳ Avoin",
         "Paluu (€)": 0.0,
     },
     {
@@ -50,7 +50,7 @@ DEFAULT_BETS = [
         "Arvio %": "50.0%",
         "EV %": "+35.0%",
         "Panos (€)": 1.00,
-        "Tila": "Avoin",
+        "Tila": "⏳ Avoin",
         "Paluu (€)": 0.0,
     },
     {
@@ -63,7 +63,7 @@ DEFAULT_BETS = [
         "Arvio %": "50.0%",
         "EV %": "+120.0%",
         "Panos (€)": 1.00,
-        "Tila": "Avoin",
+        "Tila": "⏳ Avoin",
         "Paluu (€)": 0.0,
     },
     {
@@ -76,7 +76,7 @@ DEFAULT_BETS = [
         "Arvio %": "50.0%",
         "EV %": "+41.5%",
         "Panos (€)": 2.00,
-        "Tila": "Avoin",
+        "Tila": "⏳ Avoin",
         "Paluu (€)": 0.0,
     },
     {
@@ -89,7 +89,7 @@ DEFAULT_BETS = [
         "Arvio %": "50.0%",
         "EV %": "-15.0%",
         "Panos (€)": 1.00,
-        "Tila": "Avoin",
+        "Tila": "⏳ Avoin",
         "Paluu (€)": 0.0,
     },
 ]
@@ -359,61 +359,58 @@ if st.session_state.bets:
 
   st.markdown("---")
 
-  # Määritetään sarakkeille erittäin väljät leveyden suhteet [1.0, 1.5, 1.0, 0.8, 2.5, 1.0, 0.4]
-  h1, h2, h3, h4, h5, h6, h7 = st.columns([1.0, 1.5, 1.0, 0.8, 2.5, 1.0, 0.4])
-  h1.write("**Sarja & Aika**")
-  h2.write("**Ottelu & Valinta**")
-  h3.write("**Kerroin / EV**")
-  h4.write("**Panos**")
-  h5.write("**Tila (Päivitä)**")
-  h6.write("**Paluu (€)**")
-  h7.write("")
-
   status_options = ["⏳ Avoin", "🟢 Voitto", "🔴 Tappio", "🟡 Mitätöity"]
 
   for idx, bet in enumerate(st.session_state.bets):
-    c1, c2, c3, c4, c5, c6, c7 = st.columns([1.0, 1.5, 1.0, 0.8, 2.5, 1.0, 0.4])
+    c1, c2, c3, c4 = st.columns([1.5, 2.5, 1.2, 1.0])
 
     date_str = bet.get("Päiväys", "")
     c1.write(f"**{bet['Sarja']}**\n\n`{date_str}`")
-    c2.write(f"{bet['Ottelu']}\n\n👉 *{bet['Valinta']}*")
-    c3.write(f"@{bet['Kerroin']} | EV: {bet['EV %']}")
-    c4.write(f"**{bet['Panos (€)']} €**")
+    c2.write(f"**{bet['Ottelu']}**\n\n👉 *{bet['Valinta']}* (@{bet['Kerroin']})")
+    c3.write(
+        f"Panos: **{bet['Panos (€)']} €**\n\nEV: **{bet.get('EV %', '')}**"
+    )
 
-    # Muunnetaan nykyinen arvo täsmäämään listoja
+    # Selvitetään aiemmin valittu tila
     raw_s = str(bet.get("Tila", "⏳ Avoin"))
     if "Voitto" in raw_s:
-      match_idx = 1
+      current_clean = "🟢 Voitto"
     elif "Tappio" in raw_s:
-      match_idx = 2
+      current_clean = "🔴 Tappio"
     elif "Mitätöity" in raw_s:
-      match_idx = 3
+      current_clean = "🟡 Mitätöity"
     else:
-      match_idx = 0
+      current_clean = "⏳ Avoin"
 
-    new_status = c5.selectbox(
+    # Klikattavat napit tilalle (Segmented Control)
+    new_status = c4.segmented_control(
         "Tila",
-        status_options,
-        index=match_idx,
-        key=f"status_sb_{idx}",
+        options=status_options,
+        default=current_clean,
+        key=f"seg_status_{idx}",
         label_visibility="collapsed",
     )
 
-    # Lasketaan ehdotettu palautus
+    if not new_status:
+      new_status = current_clean
+
+    # Rivi palautussummalle ja poistonapille
+    cc1, cc2 = st.columns([2.0, 0.5])
+
     default_return = bet.get("Paluu (€)", 0.0)
-    if new_status == "🟢 Voitto" and default_return == 0.0:
+    if "Voitto" in new_status and default_return == 0.0:
       default_return = round(bet["Panos (€)"] * bet["Kerroin"], 2)
-    elif new_status in ["🔴 Tappio", "⏳ Avoin"] and raw_s != new_status:
-      default_return = 0.0
-    elif new_status == "🟡 Mitätöity":
+    elif "Tappio" in new_status or "Avoin" in new_status:
+      if current_clean != new_status:
+        default_return = 0.0
+    elif "Mitätöity" in new_status:
       default_return = float(bet["Panos (€)"])
 
-    new_return = c6.number_input(
-        "Paluu",
+    new_return = cc1.number_input(
+        "Toteutunut paluu (€)",
         value=float(default_return),
         step=0.5,
-        key=f"return_num_{idx}",
-        label_visibility="collapsed",
+        key=f"ret_input_{idx}",
     )
 
     if new_status != bet.get("Tila") or new_return != bet.get("Paluu (€)"):
@@ -422,12 +419,13 @@ if st.session_state.bets:
       save_bets_to_file(st.session_state.bets)
       st.rerun()
 
-    if c7.button("🗑️", key=f"del_btn_{idx}", help="Poista veto"):
+    if cc2.button("🗑️ Poista", key=f"del_btn_{idx}"):
       st.session_state.bets.pop(idx)
       save_bets_to_file(st.session_state.bets)
       st.rerun()
 
-  st.markdown("---")
+    st.markdown("---")
+
   if st.button("⚠️ Tyhjennä koko vetohistoria"):
     st.session_state.bets = []
     save_bets_to_file([])
