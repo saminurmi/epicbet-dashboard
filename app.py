@@ -427,6 +427,15 @@ if st.session_state.bets:
         key=f"ret_input_{idx}",
     )
 
+    # Työnnetään poistonappia alas, jotta se osuu täsmälleen syötekentän viereen
+    cc2.markdown(
+        "<div style='margin-top: 28px;'></div>", unsafe_allow_html=True
+    )
+    if cc2.button("🗑️ Poista", key=f"del_btn_{idx}", use_container_width=True):
+      st.session_state.bets.pop(idx)
+      save_bets_to_file(st.session_state.bets)
+      st.rerun()
+
     if new_status != bet.get("Tila") or new_return != bet.get("Paluu (€)"):
       st.session_state.bets[idx]["Tila"] = new_status
       st.session_state.bets[idx]["Paluu (€)"] = new_return
