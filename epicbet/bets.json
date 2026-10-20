@@ -1,0 +1,80 @@
+[
+    {
+        "Päiväys": "2026-10-20 08:59",
+        "Sarja": "SM-liiga",
+        "Ottelu": "TPS - Ilves",
+        "Valinta": "1 (Kotivoitto)",
+        "Kerroin": 2.42,
+        "Raja": "2.00",
+        "Arvio %": "50.0%",
+        "EV %": "+21.0%",
+        "Panos (€)": 1.66,
+        "Tila": "Avoin",
+        "Paluu (€)": 0.0
+    },
+    {
+        "Päiväys": "2026-10-20 08:59",
+        "Sarja": "SM-liiga",
+        "Ottelu": "SaiPa - Kärpät",
+        "Valinta": "1 (Kotivoitto)",
+        "Kerroin": 2.02,
+        "Raja": "2.00",
+        "Arvio %": "50.0%",
+        "EV %": "+1.0%",
+        "Panos (€)": 0.11,
+        "Tila": "Avoin",
+        "Paluu (€)": 0.0
+    },
+    {
+        "Päiväys": "2026-10-20 08:59",
+        "Sarja": "SM-liiga",
+        "Ottelu": "HPK-Pelicans",
+        "Valinta": "1 (Kotivoitto)",
+        "Kerroin": 2.7,
+        "Raja": "2.00",
+        "Arvio %": "50.0%",
+        "EV %": "+35.0%",
+        "Panos (€)": 1.0,
+        "Tila": "Avoin",
+        "Paluu (€)": 0.0
+    },
+    {
+        "Päiväys": "2026-10-20 08:59",
+        "Sarja": "SM-liiga",
+        "Ottelu": "Kookoo-Tappara",
+        "Valinta": "1 (Kotivoitto)",
+        "Kerroin": 4.4,
+        "Raja": "2.00",
+        "Arvio %": "50.0%",
+        "EV %": "+120.0%",
+        "Panos (€)": 1.0,
+        "Tila": "Avoin",
+        "Paluu (€)": 0.0
+    },
+    {
+        "Päiväys": "2026-10-20 08:59",
+        "Sarja": "SM-liiga",
+        "Ottelu": "Sport-Jukurit",
+        "Valinta": "2 (Vierasvoitto)",
+        "Kerroin": 2.83,
+        "Raja": "2.00",
+        "Arvio %": "50.0%",
+        "EV %": "+41.5%",
+        "Panos (€)": 2.0,
+        "Tila": "Avoin",
+        "Paluu (€)": 0.0
+    },
+    {
+        "Päiväys": "2026-10-20 08:59",
+        "Sarja": "SM-liiga",
+        "Ottelu": "Lukko-Hifk",
+        "Valinta": "1 (Kotivoitto)",
+        "Kerroin": 1.7,
+        "Raja": "2.00",
+        "Arvio %": "50.0%",
+        "EV %": "-15.0%",
+        "Panos (€)": 1.0,
+        "Tila": "Avoin",
+        "Paluu (€)": 0.0
+    }
+]
