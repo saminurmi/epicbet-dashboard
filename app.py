@@ -473,7 +473,11 @@ if st.session_state.bets:
       save_bets_to_file(st.session_state.bets)
       st.rerun()
 
-    if cc2.button("🗑️ Poista", key=f"del_btn_{idx}"):
+    if cc2.button(
+    "🗑️ Poista",
+    key=f"del_btn_{idx}_{bet.get('Ottelu', '')}",
+    use_container_width=True,
+):
       st.session_state.bets.pop(idx)
       save_bets_to_file(st.session_state.bets)
       st.rerun()
