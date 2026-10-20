@@ -360,7 +360,7 @@ if st.session_state.bets:
   st.markdown("---")
 
   # Otsikkorivi
-  h1, h2, h3, h4, h5, h6, h7 = st.columns([1.5, 2, 1.2, 0.8, 1.2, 1.0, 0.5])
+  h1, h2, h3, h4, h5, h6, h7 = st.columns([1.3, 1.8, 1.2, 0.7, 1.5, 0.9, 0.5])
   h1.write("**Sarja & Aika**")
   h2.write("**Ottelu & Valinta**")
   h3.write("**Kerroin / EV**")
@@ -370,7 +370,7 @@ if st.session_state.bets:
   h7.write("")
 
   for idx, bet in enumerate(st.session_state.bets):
-    c1, c2, c3, c4, c5, c6, c7 = st.columns([1.5, 2, 1.2, 0.8, 1.2, 1.0, 0.5])
+    c1, c2, c3, c4, c5, c6, c7 = st.columns([1.3, 1.8, 1.2, 0.7, 1.5, 0.9, 0.5])
 
     date_str = bet.get("Päiväys", "")
     c1.write(f"**{bet['Sarja']}**\n\n`{date_str}`")
@@ -378,7 +378,7 @@ if st.session_state.bets:
     c3.write(f"@{bet['Kerroin']} | EV: {bet['EV %']}")
     c4.write(f"**{bet['Panos (€)']} €**")
 
-    status_options = ["Avoin", "Voitto 🟢", "Tappio 🔴", "Mitätöity 🟡"]
+    status_options = ["Avoin", "🟢 Voitto", "🔴 Tappio", "🟡 Mitätöity"]
     current_status = bet.get("Tila", "Avoin")
     status_idx = (
         status_options.index(current_status)
