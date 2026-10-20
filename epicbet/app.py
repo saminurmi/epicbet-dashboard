@@ -324,7 +324,7 @@ if st.sidebar.button("➕ Tallenna veto seurantaan"):
       "Arvio %": f"{prob_percent:.1f}%",
       "EV %": f"{ev*100:+.1f}%",
       "Panos (€)": actual_stake,
-      "Tila": "Avoin",
+      "Tila": "⏳ Avoin",
       "Paluu (€)": 0.0,
   }
   st.session_state.bets.append(new_bet)
@@ -359,18 +359,20 @@ if st.session_state.bets:
 
   st.markdown("---")
 
-  # Otsikkorivi reilulla tilalla tila-sarakkeelle
-  h1, h2, h3, h4, h5, h6, h7 = st.columns([1.2, 1.8, 1.1, 0.8, 2.2, 0.9, 0.4])
+  # Määritetään sarakkeille erittäin väljät leveyden suhteet [1.0, 1.5, 1.0, 0.8, 2.5, 1.0, 0.4]
+  h1, h2, h3, h4, h5, h6, h7 = st.columns([1.0, 1.5, 1.0, 0.8, 2.5, 1.0, 0.4])
   h1.write("**Sarja & Aika**")
   h2.write("**Ottelu & Valinta**")
   h3.write("**Kerroin / EV**")
   h4.write("**Panos**")
-  h5.write("**Tila (Valitse)**")
+  h5.write("**Tila (Päivitä)**")
   h6.write("**Paluu (€)**")
   h7.write("")
 
+  status_options = ["⏳ Avoin", "🟢 Voitto", "🔴 Tappio", "🟡 Mitätöity"]
+
   for idx, bet in enumerate(st.session_state.bets):
-    c1, c2, c3, c4, c5, c6, c7 = st.columns([1.2, 1.8, 1.1, 0.8, 2.2, 0.9, 0.4])
+    c1, c2, c3, c4, c5, c6, c7 = st.columns([1.0, 1.5, 1.0, 0.8, 2.5, 1.0, 0.4])
 
     date_str = bet.get("Päiväys", "")
     c1.write(f"**{bet['Sarja']}**\n\n`{date_str}`")
@@ -378,61 +380,49 @@ if st.session_state.bets:
     c3.write(f"@{bet['Kerroin']} | EV: {bet['EV %']}")
     c4.write(f"**{bet['Panos (€)']} €**")
 
-    # Määritetään nykyinen tila yhteensopivasti
-    raw_status = str(bet.get("Tila", "Avoin"))
-    if "Voitto" in raw_status:
-      current_clean = "Voitto"
-    elif "Tappio" in raw_status:
-      current_clean = "Tappio"
-    elif "Mitätöity" in raw_status:
-      current_clean = "Mitätöity"
+    # Muunnetaan nykyinen arvo täsmäämään listoja
+    raw_s = str(bet.get("Tila", "⏳ Avoin"))
+    if "Voitto" in raw_s:
+      match_idx = 1
+    elif "Tappio" in raw_s:
+      match_idx = 2
+    elif "Mitätöity" in raw_s:
+      match_idx = 3
     else:
-      current_clean = "Avoin"
+      match_idx = 0
 
-    # Käytetään segmented_controlia, joka näkyy selkeinä nappeina
-    new_status = c5.segmented_control(
+    new_status = c5.selectbox(
         "Tila",
-        options=["Avoin", "Voitto 🟢", "Tappio 🔴", "Mitätöity 🟡"],
-        default={
-            "Avoin": "Avoin",
-            "Voitto": "Voitto 🟢",
-            "Tappio": "Tappio 🔴",
-            "Mitätöity": "Mitätöity 🟡",
-        }.get(current_clean, "Avoin"),
-        key=f"status_seg_{idx}",
+        status_options,
+        index=match_idx,
+        key=f"status_sb_{idx}",
         label_visibility="collapsed",
     )
 
-    # Laske ehdotettu palautus
+    # Lasketaan ehdotettu palautus
     default_return = bet.get("Paluu (€)", 0.0)
-    if new_status == "Voitto 🟢" and default_return == 0.0:
+    if new_status == "🟢 Voitto" and default_return == 0.0:
       default_return = round(bet["Panos (€)"] * bet["Kerroin"], 2)
-    elif (
-        new_status in ["Tappio 🔴", "Avoin"]
-        and current_clean != new_status.split()[0]
-    ):
+    elif new_status in ["🔴 Tappio", "⏳ Avoin"] and raw_s != new_status:
       default_return = 0.0
-    elif new_status == "Mitätöity 🟡":
+    elif new_status == "🟡 Mitätöity":
       default_return = float(bet["Panos (€)"])
 
     new_return = c6.number_input(
         "Paluu",
         value=float(default_return),
         step=0.5,
-        key=f"return_{idx}",
+        key=f"return_num_{idx}",
         label_visibility="collapsed",
     )
 
-    # Tallenna muutokset
-    if (
-        new_status and new_status != bet.get("Tila")
-    ) or new_return != bet.get("Paluu (€)"):
+    if new_status != bet.get("Tila") or new_return != bet.get("Paluu (€)"):
       st.session_state.bets[idx]["Tila"] = new_status
       st.session_state.bets[idx]["Paluu (€)"] = new_return
       save_bets_to_file(st.session_state.bets)
       st.rerun()
 
-    if c7.button("🗑️", key=f"del_{idx}", help="Poista tämä veto"):
+    if c7.button("🗑️", key=f"del_btn_{idx}", help="Poista veto"):
       st.session_state.bets.pop(idx)
       save_bets_to_file(st.session_state.bets)
       st.rerun()
