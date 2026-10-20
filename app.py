@@ -161,17 +161,25 @@ def fetch_nhl_matches():
 st.sidebar.header("⚙️ EV & Kelly -Laskuri")
 
 current_bankroll = st.sidebar.number_input(
-    "Nykyinen kassa (€)", value=44.90, step=1.0, key="current_bankroll_input"
+    "Nykyinen kassa (€)",
+    value=44.90,
+    step=1.0,
+    key="sidebar_current_bankroll_input",
 )
 
 target_bankroll = st.sidebar.number_input(
-    "Tavoitesaldo (€)", value=60.0, step=1.0, key="target_bankroll_input"
+    "Tavoitesaldo (€)",
+    value=60.0,
+    step=1.0,
+    key="sidebar_target_bankroll_input",
 )
 st.sidebar.markdown("---")
 st.sidebar.subheader("🏀 Päivän ottelut & Kohde")
 
 selected_league = st.sidebar.selectbox(
-    "Valitse sarja / liiga", ["NHL", "SM-liiga", "Valioliiga"]
+    "Valitse sarja / liiga",
+    ["NHL", "SM-liiga", "Valioliiga"],
+    key="sidebar_selected_league_select",
 )
 
 if selected_league == "NHL":
@@ -194,11 +202,17 @@ else:
   ]
 
 selected_match = st.sidebar.selectbox(
-    "Valitse ottelu listasta", current_match_list
+    "Valitse ottelu listasta",
+    current_match_list,
+    key="sidebar_selected_match_select",
 )
 
-sport = st.sidebar.text_input("Laji / Sarja", value=selected_league)
-match_title = st.sidebar.text_input("Ottelu / Kohde", value=selected_match)
+sport = st.sidebar.text_input(
+    "Laji / Sarja", value=selected_league, key="sidebar_sport_text_input"
+)
+match_title = st.sidebar.text_input(
+    "Ottelu / Kohde", value=selected_match, key="sidebar_match_title_text_input"
+)
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("📊 1X2 Kertoimet & Bookkerin Arvio")
@@ -209,21 +223,21 @@ odds_1 = col_o1.number_input(
     value=2.20,
     min_value=1.01,
     step=0.01,
-    key="odds_1_input",
+    key="sidebar_odds_1_input",
 )
 odds_x = col_ox.number_input(
     "X (Tasa)",
     value=4.33,
     min_value=1.01,
     step=0.01,
-    key="odds_x_input",
+    key="sidebar_odds_x_input",
 )
 odds_2 = col_o2.number_input(
     "2 (Vieras)",
     value=2.75,
     min_value=1.01,
     step=0.01,
-    key="odds_2_input",
+    key="sidebar_odds_2_input",
 )
 imp_1 = 1 / odds_1
 imp_x = 1 / odds_x
@@ -244,7 +258,9 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("🎯 Valittu veto & Oma Arvio")
 
 selection_type = st.sidebar.radio(
-    "Pelattava merkki", ["1 (Kotivoitto)", "X (Tasapeli)", "2 (Vierasvoitto)"]
+    "Pelattava merkki",
+    ["1 (Kotivoitto)", "X (Tasapeli)", "2 (Vierasvoitto)"],
+    key="sidebar_selection_type_radio",
 )
 
 if "1" in selection_type:
@@ -264,6 +280,7 @@ preset_choice = st.sidebar.segmented_control(
     "Valitse %-pika-arvio",
     options=["40%", "45%", "50%", "55%", "60%", fair_str, "Muu / Syötä tarkka"],
     default="50%",
+    key="sidebar_preset_choice_segmented",
 )
 
 if preset_choice == "40%":
@@ -280,17 +297,19 @@ elif preset_choice == fair_str:
   prob_percent = round(suggested_p, 1)
 else:
   prob_percent = st.sidebar.number_input(
-    "Syötä tarkka %-arvio",
-    value=50.0,
-    min_value=1.0,
-    max_value=99.0,
-    step=0.5,
-    key="prob_percent_input",
-)
+      "Syötä tarkka %-arvio",
+      value=50.0,
+      min_value=1.0,
+      max_value=99.0,
+      step=0.5,
+      key="sidebar_prob_percent_input",
+  )
 
 est_prob = prob_percent / 100.0
 fair_odds = 1.0 / est_prob if est_prob > 0 else 0.0
-st.sidebar.info(f"🎯 **Tarvittava minimikerroin (+EV):** vähintään **{fair_odds:.2f}**")
+st.sidebar.info(
+    f"🎯 **Tarvittava minimikerroin (+EV):** vähintään **{fair_odds:.2f}**"
+)
 
 kelly_fraction_choice = st.sidebar.selectbox(
     "Kelly-jakaja (Säätää riskitasoa)",
@@ -302,6 +321,7 @@ kelly_fraction_choice = st.sidebar.selectbox(
         0.50: "1/2 Kelly (Korkea riski)",
         1.00: "Full Kelly (Maksimiriski)",
     }[x],
+    key="sidebar_kelly_fraction_select",
 )
 
 ev = (est_prob * odds) - 1.0
@@ -311,12 +331,13 @@ suggested_stake_pct = max(0.0, kelly_full * kelly_fraction_choice)
 suggested_stake_eur = current_bankroll * suggested_stake_pct
 default_stake = max(0.10, suggested_stake_eur) if ev > 0 else 1.00
 
+st.sidebar.markdown("---")
 actual_stake = st.sidebar.number_input(
     "Asetettava panos (€)",
     value=float(round(default_stake, 2)),
     min_value=0.10,
     step=0.10,
-    key="actual_stake_input",
+    key="sidebar_actual_stake_input",
 )
 
 st.sidebar.markdown("---")
@@ -336,7 +357,9 @@ else:
       f" {fair_odds:.2f}"
   )
 
-if st.sidebar.button("➕ Tallenna veto seurantaan"):
+if st.sidebar.button(
+    "➕ Tallenna veto seurantaan", key="sidebar_add_bet_button"
+):
   new_bet = {
       "Päiväys": datetime.now().strftime("%Y-%m-%d %H:%M"),
       "Sarja": sport,
@@ -350,9 +373,10 @@ if st.sidebar.button("➕ Tallenna veto seurantaan"):
       "Tila": "Avoin",
       "Paluu (€)": 0.0,
   }
-  st.session_state.bets.append(new_bet)
+  st.session_state.bets.insert(0, new_bet)
   save_bets_to_file(st.session_state.bets)
   st.sidebar.success("Veto tallennettu pysyvästi!")
+  st.rerun()
 
 # --- PÄÄSIVU: KASSAN KEHITYS & TILASTOT ---
 col1, col2, col3 = st.columns(3)
@@ -362,7 +386,10 @@ col2.metric(
     f"{target_bankroll:.2f} €",
     f"-{target_bankroll - current_bankroll:.2f} €",
 )
-col3.metric("Edistyminen", f"{(current_bankroll / target_bankroll)*100:.1f}%")
+progress_pct = (
+    (current_bankroll / target_bankroll) * 100 if target_bankroll > 0 else 0
+)
+col3.metric("Edistyminen", f"{progress_pct:.1f}%")
 
 st.markdown("---")
 
@@ -374,10 +401,12 @@ if st.session_state.bets:
   total_returned = sum(b.get("Paluu (€)", 0.0) for b in st.session_state.bets)
   net_profit = total_returned - total_staked
 
+  profit_color = "green" if net_profit >= 0 else "red"
   st.caption(
       f"📊 Yhteensä asetettu: **{total_staked:.2f} €** | Palautukset:"
-      f" **{total_returned:.2f} €** | Netto:"
-      f" **{net_profit:+.2f} €**"
+      f" **{total_returned:.2f} €** | Netto: <span"
+      f" style='color:{profit_color};'>**{net_profit:+.2f} €**</span>",
+      unsafe_allow_html=True,
   )
 
   st.markdown("---")
@@ -389,8 +418,8 @@ if st.session_state.bets:
 
     sarja = bet.get("Sarja", "")
     date_str = bet.get("Päiväys", "")
+    match_name = bet.get("Ottelu", f"veto_{idx}")
 
-    # Siisti harmaa päivämäärä ilman vihreitä laatikoita
     if date_str and date_str.strip():
       c1.markdown(
           f"**{sarja}**<br><span style='color: #888888; font-size:"
@@ -401,7 +430,7 @@ if st.session_state.bets:
       c1.markdown(f"**{sarja}**")
 
     c2.markdown(
-        f"**{bet['Ottelu']}**<br>👉 *{bet['Valinta']}* (@{bet['Kerroin']})",
+        f"**{match_name}**<br>👉 *{bet['Valinta']}* (@{bet['Kerroin']})",
         unsafe_allow_html=True,
     )
     c3.markdown(
@@ -427,7 +456,7 @@ if st.session_state.bets:
         index=status_options.index(current_clean)
         if current_clean in status_options
         else 0,
-        key=f"sb_status_{idx}",
+        key=f"loop_status_select_{idx}_{match_name}",
         label_visibility="collapsed",
     )
 
@@ -447,22 +476,17 @@ if st.session_state.bets:
         "Toteutunut paluu (€)",
         value=float(default_return),
         step=0.5,
-        key=f"ret_input_{idx}_{bet.get('Ottelu', '')}",
+        key=f"loop_ret_input_{idx}_{match_name}",
     )
 
-    # Työnnetään poistonappia alas, jotta se osuu täsmälleen syötekentän viereen
     cc2.markdown(
         "<div style='margin-top: 28px;'></div>", unsafe_allow_html=True
     )
     if cc2.button(
         "🗑️ Poista",
-        key=f"del_btn_{idx}_{bet.get('Ottelu', '')}",
+        key=f"loop_del_btn_{idx}_{match_name}",
         use_container_width=True,
     ):
-      st.session_state.bets.pop(idx)
-      save_bets_to_file(st.session_state.bets)
-      st.rerun()
-    if cc2.button("🗑️ Poista", key=f"del_btn_{idx}", use_container_width=True):
       st.session_state.bets.pop(idx)
       save_bets_to_file(st.session_state.bets)
       st.rerun()
@@ -473,18 +497,9 @@ if st.session_state.bets:
       save_bets_to_file(st.session_state.bets)
       st.rerun()
 
-    if cc2.button(
-    "🗑️ Poista",
-    key=f"del_btn_{idx}_{bet.get('Ottelu', '')}",
-    use_container_width=True,
-):
-      st.session_state.bets.pop(idx)
-      save_bets_to_file(st.session_state.bets)
-      st.rerun()
-
     st.markdown("---")
 
-  if st.button("⚠️ Tyhjennä koko vetohistoria"):
+  if st.button("⚠️ Tyhjennä koko vetohistoria", key="clear_all_bets_button"):
     st.session_state.bets = []
     save_bets_to_file([])
     st.rerun()
@@ -500,7 +515,7 @@ st.markdown("---")
 # --- PDF-HISTORIA TIEDOSTON LATAUS & PARSERI ---
 st.subheader("📄 Tuo Epicbetin historiatietoja (PDF)")
 uploaded_file = st.file_uploader(
-    "Lataa Epicbet-tapahtumahistoria (PDF)", type=["pdf"]
+    "Lataa Epicbet-tapahtumahistoria (PDF)", type=["pdf"], key="pdf_uploader_input"
 )
 
 if uploaded_file is not None:
@@ -531,7 +546,11 @@ col_a, col_b = st.columns(2)
 
 with col_a:
   test_odds = st.number_input(
-      "Testattava kerroin", value=1.73, min_value=1.01, step=0.01, key="test_odds"
+      "Testattava kerroin",
+      value=1.73,
+      min_value=1.01,
+      step=0.01,
+      key="test_odds_number_input",
   )
   implied_probability = (1 / test_odds) * 100
   st.info(f"🔍 Bookkerin vaatima todennäköisyys: **{implied_probability:.1f}%**")
@@ -539,6 +558,6 @@ with col_a:
 with col_b:
   st.write("**Miten tätä käytetään?**")
   st.markdown("""
-    * Jos oma arviosi kohteesta on **suurempi** kuin yllä näkyvä prosentti → kyseessä on ylikerroin (+EV).
-    * Jos arviosi on **pienempi** → kohde on alikerroin (-EV), jota matematiikan mukaan ei kannata pelata.
+- Jos oma arviosi kohteesta on **suurempi** kuin yllä näkyvä prosentti → kyseessä on ylikerroin (+EV).
+- Jos arviosi on **pienempi** → kohde on alikerroin (-EV), jota matematiikan mukaan ei kannata pelata.
     """)
