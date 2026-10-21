@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 import json
 import os
 import plotly.express as px
@@ -119,11 +119,11 @@ if "bets" not in st.session_state:
   st.session_state.bets = load_bets_from_file()
 
 
-# --- AUTOMAATTINEN NHL-OTTELUIDEN HAKU ---
+# --- AUTOMAATTINEN NHL-OTTELUIDEN HAKU PÄIVÄMÄÄRÄLLÄ ---
 @st.cache_data(ttl=3600)
-def fetch_nhl_matches():
+def fetch_nhl_matches_by_date(target_date: str):
   try:
-    url = "https://api-web.nhle.com/v1/schedule/now"
+    url = f"https://api-web.nhle.com/v1/schedule/{target_date}"
     response = requests.get(url, timeout=5)
     if response.status_code == 200:
       data = response.json()
@@ -150,11 +150,7 @@ def fetch_nhl_matches():
   except Exception:
     pass
 
-  return [
-      "Philadelphia Flyers - Colorado Avalanche",
-      "NY Rangers - Anaheim Ducks",
-      "Toronto Maple Leafs - San Jose Sharks",
-  ]
+  return [f"Ei NHL-otteluita päivänä {target_date}"]
 
 
 # --- SIVUPALKKI: KASSANHALLINTA & EV-LASKURI ---
@@ -174,7 +170,15 @@ target_bankroll = st.sidebar.number_input(
     key="sidebar_target_bankroll_input",
 )
 st.sidebar.markdown("---")
-st.sidebar.subheader("🏀 Päivän ottelut & Kohde")
+
+# --- PÄIVÄMÄÄRÄN VALINTA & SARJAT ---
+st.sidebar.subheader("📅 Päivä & Ottelut")
+selected_date = st.sidebar.date_input(
+    "Valitse pelipäivä",
+    value=date.today(),
+    key="sidebar_selected_date_input",
+)
+date_str = selected_date.strftime("%Y-%m-%d")
 
 selected_league = st.sidebar.selectbox(
     "Valitse sarja / liiga",
@@ -182,17 +186,22 @@ selected_league = st.sidebar.selectbox(
     key="sidebar_selected_league_select",
 )
 
+# Haetaan ottelut valitun liigan ja päivämäärän mukaan
 if selected_league == "NHL":
-  current_match_list = fetch_nhl_matches()
+  current_match_list = fetch_nhl_matches_by_date(date_str)
 elif selected_league == "SM-liiga":
-  current_match_list = [
-      "TPS - Ilves",
-      "SaiPa - Kärpät",
-      "HPK - Pelicans",
-      "KooKoo - Tappara",
-      "Sport - Jukurit",
-      "Lukko - HIFK",
-  ]
+  # Esimerkki Liigan otteluista valitulle päivälle (voit yhdistää tähän oman API:n tai datan)
+  if date_str == date.today().strftime("%Y-%m-%d"):
+    current_match_list = [
+        "TPS - Ilves",
+        "SaiPa - Kärpät",
+        "HPK - Pelicans",
+        "KooKoo - Tappara",
+        "Sport - Jukurit",
+        "Lukko - HIFK",
+    ]
+  else:
+    current_match_list = [f"Ei merkittyjä Liiga-pelejä päivälle {date_str}"]
 else:
   current_match_list = [
       "Tottenham - Coventry City",
@@ -361,7 +370,7 @@ if st.sidebar.button(
     "➕ Tallenna veto seurantaan", key="sidebar_add_bet_button"
 ):
   new_bet = {
-      "Päiväys": datetime.now().strftime("%Y-%m-%d %H:%M"),
+      "Päiväys": f"{date_str} {datetime.now().strftime('%H:%M')}",
       "Sarja": sport,
       "Ottelu": match_title,
       "Valinta": selection_type,
@@ -417,13 +426,13 @@ if st.session_state.bets:
     c1, c2, c3, c4 = st.columns([1.8, 2.2, 1.2, 1.3])
 
     sarja = bet.get("Sarja", "")
-    date_str = bet.get("Päiväys", "")
+    date_str_val = bet.get("Päiväys", "")
     match_name = bet.get("Ottelu", f"veto_{idx}")
 
-    if date_str and date_str.strip():
+    if date_str_val and date_str_val.strip():
       c1.markdown(
           f"**{sarja}**<br><span style='color: #888888; font-size:"
-          f" 0.85em;'>{date_str}</span>",
+          f" 0.85em;'>{date_str_val}</span>",
           unsafe_allow_html=True,
       )
     else:
