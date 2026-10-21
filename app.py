@@ -153,6 +153,40 @@ def fetch_nhl_matches_by_date(target_date: str):
   return [f"Ei NHL-otteluita päivänä {target_date}"]
 
 
+# --- LIIGAN OTTELUOHJELMA (KÄTEVÄSTI SANAKIRJASSA) ---
+LIIGA_SCHEDULE = {
+    "2026-10-21": ["K-Espoo - KooKoo", "Tappara - Ässät"],
+    "2026-10-22": ["JYP - HPK"],
+    "2026-10-23": [
+        "Jukurit - Ilves",
+        "Kärpät - KalPa",
+        "Lukko - TPS",
+        "Sport - SaiPa",
+        "K-Espoo - HIFK",
+    ],
+    "2026-10-24": [
+        "HPK - HIFK",
+        "Ilves - Jukurit",
+        "JYP - Ässät",
+        "KooKoo - Jokerit",
+        "Kärpät - KalPa",
+        "Pelicans - Tappara",
+        "Sport - SaiPa",
+        "TPS - Lukko",
+    ],
+    "2026-10-27": ["KalPa - Sport"],
+    "2026-10-28": [
+        "HIFK - Ilves",
+        "Jukurit - Lukko",
+        "JYP - Tappara",
+        "K-Espoo - TPS",
+        "KooKoo - Ässät",
+        "Kärpät - HPK",
+        "Pelicans - SaiPa",
+    ],
+}
+
+
 # --- SIVUPALKKI: KASSANHALLINTA & EV-LASKURI ---
 st.sidebar.header("⚙️ EV & Kelly -Laskuri")
 
@@ -190,18 +224,9 @@ selected_league = st.sidebar.selectbox(
 if selected_league == "NHL":
   current_match_list = fetch_nhl_matches_by_date(date_str)
 elif selected_league == "SM-liiga":
-  # Esimerkki Liigan otteluista valitulle päivälle (voit yhdistää tähän oman API:n tai datan)
-  if date_str == date.today().strftime("%Y-%m-%d"):
-    current_match_list = [
-        "TPS - Ilves",
-        "SaiPa - Kärpät",
-        "HPK - Pelicans",
-        "KooKoo - Tappara",
-        "Sport - Jukurit",
-        "Lukko - HIFK",
-    ]
-  else:
-    current_match_list = [f"Ei merkittyjä Liiga-pelejä päivälle {date_str}"]
+  current_match_list = LIIGA_SCHEDULE.get(
+      date_str, [f"Ei merkittyjä Liiga-pelejä päivälle {date_str}"]
+  )
 else:
   current_match_list = [
       "Tottenham - Coventry City",
