@@ -241,12 +241,11 @@ selected_match = st.sidebar.selectbox(
     key="sidebar_selected_match_select",
 )
 
-sport = st.sidebar.text_input(
-    "Laji / Sarja", value=selected_league, key="sidebar_sport_text_input"
-)
-match_title = st.sidebar.text_input(
-    "Ottelu / Kohde", value=selected_match, key="sidebar_match_title_text_input"
-)
+# Sidotaan arvot suoraan valitusta sarjasta ja ottelusta
+sport = selected_league
+match_title = selected_match
+
+st.sidebar.caption(f"📌 Aktiivinen kohde: **{sport}** | **{match_title}**")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("📊 1X2 Kertoimet & Bookkerin Arvio")
