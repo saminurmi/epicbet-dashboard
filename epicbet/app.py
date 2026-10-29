@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests
-import json
+import math
 from datetime import datetime
 
 # -----------------------------------------------------------------------------
@@ -13,7 +13,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Haetaan Supabase-asetukset Streamlit secretsistä
 try:
     SUPABASE_URL = st.secrets["SUPABASE_URL"]
     SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
@@ -52,8 +51,7 @@ def fetch_bets_from_supabase():
                     "Lunastus": float(row.get("lunastus", 0.0))
                 })
             return bets
-        else:
-            return []
+        return []
     except Exception:
         return []
 
@@ -85,13 +83,7 @@ def update_bet_in_supabase(bet_id, updated_fields):
         return False
     try:
         url = f"{SUPABASE_URL}/rest/v1/bets?id=eq.{bet_id}"
-        payload = {}
-        if "Tulos" in updated_fields:
-            payload["tulos"] = updated_fields["Tulos"]
-        if "Lunastus" in updated_fields:
-            payload["lunastus"] = updated_fields["Lunastus"]
-        
-        response = requests.patch(url, headers=HEADERS, json=payload)
+        response = requests.patch(url, headers=HEADERS, json=updated_fields)
         return response.status_code in [200, 204]
     except Exception:
         return False
@@ -107,9 +99,9 @@ def delete_bet_from_supabase(bet_id):
     except Exception:
         return False
 
-# Ladataan vedot session stateen
-if "bets" not in st.session_state:
-    st.session_state.bets = fetch_bets_from_supabase()
+# Apufunktio Poisson-todennäköisyydelle
+def poisson_prob(lmbda, k):
+    return (math.exp(-lmbda) * (lmbda ** k)) / math.factorial(k)
 
 # -----------------------------------------------------------------------------
 # 2. UI - PÄÄVALIKKO & VÄLILEHDET
@@ -127,15 +119,75 @@ tab1, tab2, tab3 = st.tabs([
 # -----------------------------------------------------------------------------
 with tab1:
     st.subheader("⚽ Poisson & Rajakerroin -laskuri")
-    st.markdown("Syötä joukkueiden maaliodotukset (xG) ja tarkastele ottelun todennäköisyyksiä, rajakerroimia sekä odotusarvoa (EV).")
+    st.markdown("Syötä joukkueiden maaliodotukset (xG) laskeaksesi ottelun todennäköisyydet, 1X2-rajakertoimet sekä odotusarvon (EV).")
     
     col1, col2 = st.columns(2)
     with col1:
         home_xg = st.number_input("Kotijoukkueen xG", min_value=0.0, max_value=10.0, value=1.5, step=0.05)
     with col2:
-        away_xg = st.number_input("Vierasjoukkueen xG", min_value=0.0, max_value=10.0, value=1.2, step=0.05)
+        away_xg = st.number_input("Vierasjoukkueen xG", min_value=0.0, max_value=10.0, value=1.1, step=0.05)
 
-    st.info(f"Odotusarvot laskettu: Kotona {home_xg} | Vieraissa {away_xg}")
+    # Lasketaan maaliodotusten pohjalta todennäköisyydet (max 6 maalia per joukkue riittää kattamaan 99% tapauksista)
+    max_goals = 6
+    home_probs = [poisson_prob(home_xg, i) for i in range(max_goals + 1)]
+    away_probs = [poisson_prob(away_xg, i) for i in range(max_goals + 1)]
+
+    home_win = 0
+    draw = 0
+    away_win = 0
+
+    for h in range(max_goals + 1):
+        for a in range(max_goals + 1):
+            p = home_probs[h] * away_probs[a]
+            if h > a:
+                home_win += p
+            elif h == a:
+                draw += p
+            else:
+                away_win += p
+
+    # Muunnetaan rajakertoimiksi (1 / todennäköisyys)
+    fair_1 = 1 / home_win if home_win > 0 else 0
+    fair_x = 1 / draw if draw > 0 else 0
+    fair_2 = 1 / away_win if away_win > 0 else 0
+
+    st.markdown("---")
+    st.markdown("### 📊 Lasketut todennäköisyydet ja rajakertoimet")
+    
+    res_col1, res_col2, res_col3 = st.columns(3)
+    with res_col1:
+        st.metric("Kotivoitto (1)", f"{home_win*100:.1f}%", f"Rajakerroin: {fair_1:.2f}")
+    with res_col2:
+        st.metric("Tasapeli (X)", f"{draw*100:.1f}%", f"Rajakerroin: {fair_x:.2f}")
+    with res_col3:
+        st.metric("Vierasvoitto (2)", f"{away_win*100:.1f}%", f"Rajakerroin: {fair_2:.2f}")
+
+    st.markdown("---")
+    st.subheader("💡 EV (Odotusarvo) & Kelly-laskuri")
+    ev_col1, ev_col2 = st.columns(2)
+    with ev_col1:
+        market_odds = st.number_input("Tarjolla oleva kerroin", min_value=1.01, value=2.10, step=0.01)
+        chosen_prob = st.slider("Oma arvio kohteelle (%)", min_value=1.0, max_value=100.0, value=float(round(home_win*100, 1)), step=0.5)
+    with ev_col2:
+        bankroll = st.number_input("Kassasi koko (€)", min_value=10.0, value=1000.0, step=50.0)
+        kelly_fraction = st.selectbox("Kellyn kerrin", [1.0, 0.5, 0.25], index=1)
+
+    # EV = (Kerroin * Todennäköisyys) - 1
+    prob_dec = chosen_prob / 100.0
+    ev_val = (market_odds * prob_dec) - 1.0
+    
+    # Kelly % = (p * b - q) / b  missä b = kerroin - 1, q = 1 - p
+    b_val = market_odds - 1.0
+    q_val = 1.0 - prob_dec
+    kelly_pct = ((prob_dec * b_val - q_val) / b_val) if b_val > 0 else 0
+    kelly_pct = max(0.0, kelly_pct) * kelly_fraction
+    recommended_stake = bankroll * kelly_pct
+
+    st.markdown(f"**Odotusarvo (EV):** `{ev_val*100:+.2f}%`")
+    if ev_val > 0:
+        st.success(je: f"Kohde on ylikerroin! Suositeltava panos (Kelly {kelly_fraction}x): **{recommended_stake:.2f} €** ({kelly_pct*100:.2f}% kassasta)")
+    else:
+        st.warning("Ei pelattavaa (EV negatiivinen tai nolla).")
 
 # -----------------------------------------------------------------------------
 # VÄLILEHTI 2: Bet Manager & Historia
@@ -143,14 +195,15 @@ with tab1:
 with tab2:
     st.subheader("📋 Bet Manager & Historia")
     
-    st.session_state.bets = fetch_bets_from_supabase()
-    bets = st.session_state.bets
+    bets = fetch_bets_from_supabase()
 
     if bets:
         df = pd.DataFrame(bets)
         st.dataframe(df, use_container_width=True)
+        
         total_bets = len(df)
-        st.metric("Avoimet / Kirjatut vedot yhteensä", total_bets)
+        total_staked = df["Panos"].sum()
+        st.metric("Vedot yhteensä", total_bets, f"Panokset yht: {total_staked:.2f} €")
     else:
         st.info("Ei vielä tallennettuja vetoja tietokannassa. Lisää ensimmäinen vetosi 'Hallinnoi vetoja' -välilehdeltä!")
 
@@ -189,30 +242,31 @@ with tab3:
             success = save_bet_to_supabase(new_bet)
             if success:
                 st.success("Veto tallennettu onnistuneesti pilvitietokantaan!")
-                st.session_state.bets = fetch_bets_from_supabase()
                 st.rerun()
             else:
                 st.error("Tallennus epäonnistui. Tarkista Supabase-yhteysasetukset.")
 
     st.markdown("---")
-    st.subheader("Poista tai merkitse vetojen tuloksia")
+    st.subheader("Muokkaa tai poista olemassa olevia vetoja")
     
     current_bets = fetch_bets_from_supabase()
     if current_bets:
         for b in current_bets:
             col_a, col_b, col_c = st.columns([3, 2, 1])
             with col_a:
-                st.text(f"{b.get('Päivä')} | {b.get('Ottelu')} ({b.get('Kohde')}) - Kerroin: {b.get('Kerroin')}")
+                st.text(f"{b.get('Päivä')} | {b.get('Ottelu')} ({b.get('Kohde')}) - K: {b.get('Kerroin')}")
             with col_b:
                 current_status = b.get("Tulos", "Avoin")
-                status_idx = ["Avoin", "Voitto 🟢", "Tappio 🔴", "Push 🟡"].index(current_status) if current_status in ["Avoin", "Voitto 🟢", "Tappio 🔴", "Push 🟡"] else 0
-                new_status = st.selectbox("Tulos", ["Avoin", "Voitto 🟢", "Tappio 🔴", "Push 🟡"], index=status_idx, key=f"status_{b['id']}")
+                statuses = ["Avoin", "Voitto 🟢", "Tappio 🔴", "Push 🟡"]
+                status_idx = statuses.index(current_status) if current_status in statuses else 0
+                new_status = st.selectbox("Tulos", statuses, index=status_idx, key=f"status_{b['id']}")
                 if new_status != current_status:
-                    update_bet_in_supabase(b["id"], {"Tulos": new_status})
+                    update_bet_in_supabase(b["id"], {"tulos": new_status})
+                    st.rerun()
             with col_c:
                 if st.button("Poista", key=f"del_{b['id']}"):
                     delete_bet_from_supabase(b["id"])
                     st.success("Veto poistettu!")
                     st.rerun()
     else:
-        st.write("Ei poistettavia tai muokattavia vetoja.")
+        st.write("Ei muokattavia vetoja.")
