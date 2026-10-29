@@ -3,7 +3,8 @@ import numpy as np
 from scipy.stats import poisson
 
 def render_poisson_tab():
-    st.subheader("🧮 Poisson & Rajakerroin -laskuri")
+    
+    st.subheader("🔢 Poisson & Rajakerroin -laskuri")
     st.markdown("Syötä joukkueiden maaliodottamat (xG) ja tarkastele ottelun todennäköisyyksiä, rajakertoimia sekä odotusarvoa (EV).")
 
     col1, col2 = st.columns(2)

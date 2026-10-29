@@ -384,8 +384,7 @@ col3.metric("Edistyminen", f"{progress_pct:.1f}%")
 st.markdown("---")
 
 # --- LUODAAN VÄLILEHDET ---
-tab1, tab2, tab3 = st.tabs(["📈 Poisson & Laskurit", "📋 Bet Manager & Historia", "✏️ Hallinnoi vetoja"])
-
+tab1, tab2, tab3 = st.tabs(["📊 Poisson & Laskurit", "📋 Bet Manager & Historia", "✏️ Hallinnoi vetoja"])
 # -------------------------------------------------------------------------
 # VÄLILEHTI 1: POISSON & LASKURIT
 # -------------------------------------------------------------------------
