@@ -127,7 +127,6 @@ with tab1:
     with col2:
         away_xg = st.number_input("Vierasjoukkueen xG", min_value=0.0, max_value=10.0, value=1.1, step=0.05)
 
-    # Lasketaan maaliodotusten pohjalta todennäköisyydet (max 6 maalia per joukkue riittää kattamaan 99% tapauksista)
     max_goals = 6
     home_probs = [poisson_prob(home_xg, i) for i in range(max_goals + 1)]
     away_probs = [poisson_prob(away_xg, i) for i in range(max_goals + 1)]
@@ -146,7 +145,6 @@ with tab1:
             else:
                 away_win += p
 
-    # Muunnetaan rajakertoimiksi (1 / todennäköisyys)
     fair_1 = 1 / home_win if home_win > 0 else 0
     fair_x = 1 / draw if draw > 0 else 0
     fair_2 = 1 / away_win if away_win > 0 else 0
@@ -170,13 +168,11 @@ with tab1:
         chosen_prob = st.slider("Oma arvio kohteelle (%)", min_value=1.0, max_value=100.0, value=float(round(home_win*100, 1)), step=0.5)
     with ev_col2:
         bankroll = st.number_input("Kassasi koko (€)", min_value=10.0, value=1000.0, step=50.0)
-        kelly_fraction = st.selectbox("Kellyn kerrin", [1.0, 0.5, 0.25], index=1)
+        kelly_fraction = st.selectbox("Kellyn kerroin", [1.0, 0.5, 0.25], index=1)
 
-    # EV = (Kerroin * Todennäköisyys) - 1
     prob_dec = chosen_prob / 100.0
     ev_val = (market_odds * prob_dec) - 1.0
     
-    # Kelly % = (p * b - q) / b  missä b = kerroin - 1, q = 1 - p
     b_val = market_odds - 1.0
     q_val = 1.0 - prob_dec
     kelly_pct = ((prob_dec * b_val - q_val) / b_val) if b_val > 0 else 0
@@ -185,7 +181,7 @@ with tab1:
 
     st.markdown(f"**Odotusarvo (EV):** `{ev_val*100:+.2f}%`")
     if ev_val > 0:
-        st.success(je: f"Kohde on ylikerroin! Suositeltava panos (Kelly {kelly_fraction}x): **{recommended_stake:.2f} €** ({kelly_pct*100:.2f}% kassasta)")
+        st.success(f"Kohde on ylikerroin! Suositeltava panos (Kelly {kelly_fraction}x): **{recommended_stake:.2f} €** ({kelly_pct*100:.2f}% kassasta)")
     else:
         st.warning("Ei pelattavaa (EV negatiivinen tai nolla).")
 
