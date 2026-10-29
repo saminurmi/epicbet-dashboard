@@ -5,3 +5,4 @@ plotly
 pypdf
 requests
 psycopg2-binary
+
