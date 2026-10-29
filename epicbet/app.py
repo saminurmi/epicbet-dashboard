@@ -18,7 +18,6 @@ try:
     SUPABASE_URL = st.secrets["SUPABASE_URL"]
     SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 except Exception:
-    # Fallback-arvot tai varoitus, jos secrets puuttuu
     SUPABASE_URL = ""
     SUPABASE_KEY = ""
 
@@ -38,7 +37,6 @@ def fetch_bets_from_supabase():
         response = requests.get(url, headers=HEADERS)
         if response.status_code == 200:
             data = response.json()
-            # Muunnetaan Supabasen rivit sovelluksen odottamaan muotoon
             bets = []
             for row in data:
                 bets.append({
@@ -55,10 +53,8 @@ def fetch_bets_from_supabase():
                 })
             return bets
         else:
-            print(f"Virhe haettaessa tietoja: {response.text}")
             return []
-    except Exception as e:
-        print(f"Poikkeus tietokantahaussa: {e}")
+    except Exception:
         return []
 
 def save_bet_to_supabase(bet):
@@ -80,8 +76,7 @@ def save_bet_to_supabase(bet):
         }
         response = requests.post(url, headers=HEADERS, json=payload)
         return response.status_code in [200, 201]
-    except Exception as e:
-        print(f"Virhe tallennuksessa: {e}")
+    except Exception:
         return False
 
 def update_bet_in_supabase(bet_id, updated_fields):
@@ -90,7 +85,6 @@ def update_bet_in_supabase(bet_id, updated_fields):
         return False
     try:
         url = f"{SUPABASE_URL}/rest/v1/bets?id=eq.{bet_id}"
-        # Muunnetaan avaimet tietokantasarakkeiksi
         payload = {}
         if "Tulos" in updated_fields:
             payload["tulos"] = updated_fields["Tulos"]
@@ -99,8 +93,7 @@ def update_bet_in_supabase(bet_id, updated_fields):
         
         response = requests.patch(url, headers=HEADERS, json=payload)
         return response.status_code in [200, 204]
-    except Exception as e:
-        print(f"Virhe päivityksessä: {e}")
+    except Exception:
         return False
 
 def delete_bet_from_supabase(bet_id):
@@ -111,8 +104,7 @@ def delete_bet_from_supabase(bet_id):
         url = f"{SUPABASE_URL}/rest/v1/bets?id=eq.{bet_id}"
         response = requests.delete(url, headers=HEADERS)
         return response.status_code in [200, 204]
-    except Exception as e:
-        print(f"Virhe poistossa: {e}")
+    except Exception:
         return False
 
 # Ladataan vedot session stateen
@@ -143,7 +135,6 @@ with tab1:
     with col2:
         away_xg = st.number_input("Vierasjoukkueen xG", min_value=0.0, max_value=10.0, value=1.2, step=0.05)
 
-    # Yksinkertainen simuloitu laskenta demona
     st.info(f"Odotusarvot laskettu: Kotona {home_xg} | Vieraissa {away_xg}")
 
 # -----------------------------------------------------------------------------
@@ -152,14 +143,12 @@ with tab1:
 with tab2:
     st.subheader("📋 Bet Manager & Historia")
     
-    # Päivitetään tiedot kannasta
     st.session_state.bets = fetch_bets_from_supabase()
     bets = st.session_state.bets
 
     if bets:
         df = pd.DataFrame(bets)
         st.dataframe(df, use_container_width=True)
-        
         total_bets = len(df)
         st.metric("Avoimet / Kirjatut vedot yhteensä", total_bets)
     else:
@@ -223,7 +212,7 @@ with tab3:
             with col_c:
                 if st.button("Poista", key=f"del_{b['id']}"):
                     delete_bet_from_supabase(b["id"])
-                    st.success(f"Veto poistettu!")
+                    st.success("Veto poistettu!")
                     st.rerun()
     else:
         st.write("Ei poistettavia tai muokattavia vetoja.")
