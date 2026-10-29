@@ -1,158 +1,94 @@
 from datetime import date, datetime
 import json
 import os
-import numpy as np
 import plotly.express as px
+import psycopg2
+import pandas as pd
 from pypdf import PdfReader
 import requests
-from scipy.stats import poisson
 import streamlit as st
+from poisson_laskuri import render_poisson_tab
 
 st.set_page_config(page_title="Epicbet Dashboard", layout="wide")
 
 st.title("🎲 Epicbet — Pelikassan & EV:n seuranta")
 
-# --- TIEDOSTOPOHJAINEN TALLENNUS (JSON) ---
-BETS_FILE = "bets.json"
+# --- TIETOKANTAYHTEYS (SUPABASE) ---
+def get_db_connection():
+    return psycopg2.connect(
+        host="db.icywiagkvqlplfyrkuhq.supabase.co",
+        database="postgres",
+        user="postgres",
+        password="WLpulelShZbg6BdL",
+        port=5432
+    )
 
-DEFAULT_BETS = [
-    {
-        "Päiväys": "2026-10-20 08:59",
-        "Sarja": "SM-liiga",
-        "Ottelu": "TPS - Ilves",
-        "Valinta": "1 (Kotivoitto)",
-        "Kerroin": 2.42,
-        "Raja": "2.00",
-        "Arvio %": "50.0%",
-        "EV %": "+21.0%",
-        "Panos (€)": 1.66,
-        "Tila": "Voitto 🟢",
-        "Paluu (€)": 4.02,
-    },
-    {
-        "Päiväys": "2026-10-20 08:59",
-        "Sarja": "SM-liiga",
-        "Ottelu": "SaiPa - Kärpät",
-        "Valinta": "1 (Kotivoitto)",
-        "Kerroin": 2.02,
-        "Raja": "2.00",
-        "Arvio %": "50.0%",
-        "EV %": "+1.0%",
-        "Panos (€)": 0.11,
-        "Tila": "Avoin",
-        "Paluu (€)": 0.0,
-    },
-    {
-        "Päiväys": "2026-10-20 08:59",
-        "Sarja": "SM-liiga",
-        "Ottelu": "HPK-Pelicans",
-        "Valinta": "1 (Kotivoitto)",
-        "Kerroin": 2.70,
-        "Raja": "2.00",
-        "Arvio %": "50.0%",
-        "EV %": "+35.0%",
-        "Panos (€)": 1.00,
-        "Tila": "Avoin",
-        "Paluu (€)": 0.0,
-    },
-    {
-        "Päiväys": "2026-10-20 08:59",
-        "Sarja": "SM-liiga",
-        "Ottelu": "Kookoo-Tappara",
-        "Valinta": "1 (Kotivoitto)",
-        "Kerroin": 4.40,
-        "Raja": "2.00",
-        "Arvio %": "50.0%",
-        "EV %": "+120.0%",
-        "Panos (€)": 1.00,
-        "Tila": "Avoin",
-        "Paluu (€)": 0.0,
-    },
-    {
-        "Päiväys": "2026-10-20 08:59",
-        "Sarja": "SM-liiga",
-        "Ottelu": "Sport-Jukurit",
-        "Valinta": "2 (Vierasvoitto)",
-        "Kerroin": 2.83,
-        "Raja": "2.00",
-        "Arvio %": "50.0%",
-        "EV %": "+41.5%",
-        "Panos (€)": 2.00,
-        "Tila": "Avoin",
-        "Paluu (€)": 0.0,
-    },
-    {
-        "Päiväys": "2026-10-20 08:59",
-        "Sarja": "SM-liiga",
-        "Ottelu": "Lukko-Hifk",
-        "Valinta": "1 (Kotivoitto)",
-        "Kerroin": 1.70,
-        "Raja": "2.00",
-        "Arvio %": "50.0%",
-        "EV %": "-15.0%",
-        "Panos (€)": 1.00,
-        "Tila": "Avoin",
-        "Paluu (€)": 0.0,
-    },
-]
-
-
-def load_bets_from_file():
-  if os.path.exists(BETS_FILE):
+def load_bets_from_db():
     try:
-      with open(BETS_FILE, "r", encoding="utf-8") as f:
-        data = json.load(f)
-        if data:
-          return data
-    except Exception:
-      pass
-  return DEFAULT_BETS
-
-
-def save_bets_to_file(bets_list):
-  try:
-    with open(BETS_FILE, "w", encoding="utf-8") as f:
-      json.dump(bets_list, f, ensure_ascii=False, indent=4)
-  except Exception as e:
-    st.error(f"Virhe tallennuksessa: {e}")
-
+        connection = get_db_connection()
+        query = "SELECT * FROM bets ORDER BY id DESC;"
+        df = pd.read_sql(query, connection)
+        connection.close()
+        
+        bets_list = []
+        for _, row in df.iterrows():
+            status_map = {
+                'PENDING': 'Avoin',
+                'WON': 'Voitto 🟢',
+                'LOST': 'Tappio 🔴',
+                'VOID': 'Mitätöity 🟡'
+            }
+            bets_list.append({
+                "id": row.get("id"),
+                "Päiväys": str(row.get("match_date", "")),
+                "Sarja": row.get("league", ""),
+                "Ottelu": f"{row.get('home_team', '')} - {row.get('away_team', '')}",
+                "Valinta": row.get("selected_pick", ""),
+                "Kerroin": row.get("odds", 0.0),
+                "Raja": f"{row.get('calculated_fair_odds', 0.0):.2f}",
+                "Arvio %": "-", 
+                "EV %": "-",
+                "Panos (€)": row.get("stake", 0.0),
+                "Tila": status_map.get(row.get("status", "PENDING"), "Avoin"),
+                "Paluu (€)": (row.get("stake", 0.0) * row.get("odds", 0.0)) if row.get("status") == 'WON' else (0.0 if row.get("status") != 'VOID' else row.get("stake", 0.0))
+            })
+        return bets_list
+    except Exception as e:
+        st.error(f"Virhe tietokannan luvussa: {e}")
+        return []
 
 if "bets" not in st.session_state:
-  st.session_state.bets = load_bets_from_file()
+    st.session_state.bets = load_bets_from_db()
 
 
 # --- AUTOMAATTINEN NHL-OTTELUIDEN HAKU PÄIVÄMÄÄRÄLLÄ ---
 @st.cache_data(ttl=3600)
 def fetch_nhl_matches_by_date(target_date: str):
-  try:
-    url = f"https://api-web.nhle.com/v1/schedule/{target_date}"
-    response = requests.get(url, timeout=5)
-    if response.status_code == 200:
-      data = response.json()
-      match_list = []
-      for game_week in data.get("gameWeek", []):
-        for game in game_week.get("games", []):
-          away = (
-              game.get("awayTeam", {}).get("placeName", {}).get("default", "")
-              + " "
-              + game.get("awayTeam", {}).get("commonName", {}).get(
-                  "default", ""
-              )
-          )
-          home = (
-              game.get("homeTeam", {}).get("placeName", {}).get("default", "")
-              + " "
-              + game.get("homeTeam", {}).get("commonName", {}).get(
-                  "default", ""
-              )
-          )
-          match_list.append(f"{away.strip()} - {home.strip()}")
-      if match_list:
-        return match_list
-  except Exception:
-    pass
+    try:
+        url = f"https://api-web.nhle.com/v1/schedule/{target_date}"
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            match_list = []
+            for game_week in data.get("gameWeek", []):
+                for game in game_week.get("games", []):
+                    away = (
+                        game.get("awayTeam", {}).get("placeName", {}).get("default", "")
+                        + " "
+                        + game.get("awayTeam", {}).get("commonName", {}).get("default", "")
+                    )
+                    home = (
+                        game.get("homeTeam", {}).get("placeName", {}).get("default", "")
+                        + " "
+                        + game.get("homeTeam", {}).get("commonName", {}).get("default", "")
+                    )
+                    match_list.append(f"{away.strip()} - {home.strip()}")
+            if match_list:
+                return match_list
+    except Exception:
+        pass
 
-  return [f"Ei NHL-otteluita päivänä {target_date}"]
+    return [f"Ei NHL-otteluita päivänä {target_date}"]
 
 
 # --- LIIGAN OTTELUOHJELMA ---
@@ -223,18 +159,18 @@ selected_league = st.sidebar.selectbox(
 )
 
 if selected_league == "NHL":
-  current_match_list = fetch_nhl_matches_by_date(date_str)
+    current_match_list = fetch_nhl_matches_by_date(date_str)
 elif selected_league == "SM-liiga":
-  current_match_list = LIIGA_SCHEDULE.get(
-      date_str, [f"Ei merkittyjä Liiga-pelejä päivälle {date_str}"]
-  )
+    current_match_list = LIIGA_SCHEDULE.get(
+        date_str, [f"Ei merkittyjä Liiga-pelejä päivälle {date_str}"]
+    )
 else:
-  current_match_list = [
-      "Tottenham - Coventry City",
-      "Manchester City - Arsenal",
-      "Liverpool - Chelsea",
-      "Aston Villa - Newcastle",
-  ]
+    current_match_list = [
+        "Tottenham - Coventry City",
+        "Manchester City - Arsenal",
+        "Liverpool - Chelsea",
+        "Aston Villa - Newcastle",
+    ]
 
 selected_match = st.sidebar.selectbox(
     "Valitse ottelu listasta",
@@ -252,25 +188,13 @@ st.sidebar.subheader("📊 1X2 Kertoimet & Bookkerin Arvio")
 
 col_o1, col_ox, col_o2 = st.sidebar.columns(3)
 odds_1 = col_o1.number_input(
-    "1 (Koti)",
-    value=2.20,
-    min_value=1.01,
-    step=0.01,
-    key="sidebar_odds_1_input",
+    "1 (Koti)", value=2.20, min_value=1.01, step=0.01, key="sidebar_odds_1_input"
 )
 odds_x = col_ox.number_input(
-    "X (Tasa)",
-    value=4.33,
-    min_value=1.01,
-    step=0.01,
-    key="sidebar_odds_x_input",
+    "X (Tasa)", value=4.33, min_value=1.01, step=0.01, key="sidebar_odds_x_input"
 )
 odds_2 = col_o2.number_input(
-    "2 (Vieras)",
-    value=2.75,
-    min_value=1.01,
-    step=0.01,
-    key="sidebar_odds_2_input",
+    "2 (Vieras)", value=2.75, min_value=1.01, step=0.01, key="sidebar_odds_2_input"
 )
 imp_1 = 1 / odds_1
 imp_x = 1 / odds_x
@@ -297,14 +221,14 @@ selection_type = st.sidebar.radio(
 )
 
 if "1" in selection_type:
-  odds = odds_1
-  suggested_p = fair_prob_1
+    odds = odds_1
+    suggested_p = fair_prob_1
 elif "X" in selection_type:
-  odds = odds_x
-  suggested_p = fair_prob_x
+    odds = odds_x
+    suggested_p = fair_prob_x
 else:
-  odds = odds_2
-  suggested_p = fair_prob_2
+    odds = odds_2
+    suggested_p = fair_prob_2
 
 st.sidebar.markdown(f"**Oma todennäköisyysarvio kohteelle {selection_type} (%)**")
 
@@ -317,32 +241,30 @@ preset_choice = st.sidebar.segmented_control(
 )
 
 if preset_choice == "40%":
-  prob_percent = 40.0
+    prob_percent = 40.0
 elif preset_choice == "45%":
-  prob_percent = 45.0
+    prob_percent = 45.0
 elif preset_choice == "50%":
-  prob_percent = 50.0
+    prob_percent = 50.0
 elif preset_choice == "55%":
-  prob_percent = 55.0
+    prob_percent = 55.0
 elif preset_choice == "60%":
-  prob_percent = 60.0
+    prob_percent = 60.0
 elif preset_choice == fair_str:
-  prob_percent = round(suggested_p, 1)
+    prob_percent = round(suggested_p, 1)
 else:
-  prob_percent = st.sidebar.number_input(
-      "Syötä tarkka %-arvio",
-      value=50.0,
-      min_value=1.0,
-      max_value=99.0,
-      step=0.5,
-      key="sidebar_prob_percent_input",
-  )
+    prob_percent = st.sidebar.number_input(
+        "Syötä tarkka %-arvio",
+        value=50.0,
+        min_value=1.0,
+        max_value=99.0,
+        step=0.5,
+        key="sidebar_prob_percent_input",
+    )
 
 est_prob = prob_percent / 100.0
 fair_odds = 1.0 / est_prob if est_prob > 0 else 0.0
-st.sidebar.info(
-    f"🎯 **Tarvittava minimikerroin (+EV):** vähintään **{fair_odds:.2f}**"
-)
+st.sidebar.info(f"🎯 **Tarvittava minimikerroin (+EV):** vähintään **{fair_odds:.2f}**")
 
 kelly_fraction_choice = st.sidebar.selectbox(
     "Kelly-jakaja (Säätää riskitasoa)",
@@ -375,134 +297,55 @@ actual_stake = st.sidebar.number_input(
 
 st.sidebar.markdown("---")
 if ev > 0:
-  st.sidebar.success(
-      f"✅ **+EV (Ylikerroin!):** +{ev*100:.1f}%\n\nTarjous {odds:.2f} > Raja"
-      f" {fair_odds:.2f}"
-  )
-  st.sidebar.metric(
-      "Suositeltu Kelly-panos",
-      f"{suggested_stake_eur:.2f} €",
-      f"{suggested_stake_pct*100:.1f}% kassasta",
-  )
+    st.sidebar.success(
+        f"✅ **+EV (Ylikerroin!):** +{ev*100:.1f}%\n\nTarjous {odds:.2f} > Raja"
+        f" {fair_odds:.2f}"
+    )
+    st.sidebar.metric(
+        "Suositeltu Kelly-panos",
+        f"{suggested_stake_eur:.2f} €",
+        f"{suggested_stake_pct*100:.1f}% kassasta",
+    )
 else:
-  st.sidebar.error(
-      f"❌ **-EV (Alikerroin):** {ev*100:.1f}%\n\nTarjous {odds:.2f} < Raja"
-      f" {fair_odds:.2f}"
-  )
-
-if st.sidebar.button(
-    "➕ Tallenna veto seurantaan", key="sidebar_add_bet_button"
-):
-  new_bet = {
-      "Päiväys": f"{date_str} {datetime.now().strftime('%H:%M')}",
-      "Sarja": sport,
-      "Ottelu": match_title,
-      "Valinta": selection_type,
-      "Kerroin": odds,
-      "Raja": f"{fair_odds:.2f}",
-      "Arvio %": f"{prob_percent:.1f}%",
-      "EV %": f"{ev*100:+.1f}%",
-      "Panos (€)": actual_stake,
-      "Tila": "Avoin",
-      "Paluu (€)": 0.0,
-  }
-  st.session_state.bets.insert(0, new_bet)
-  save_bets_to_file(st.session_state.bets)
-  st.sidebar.success("Veto tallennettu pysyvästi!")
-  st.rerun()
-
-
-# --- POISSON-LASKURIN FUNKTIO ---
-def render_poisson_calculator():
-  st.subheader("🧮 Poisson & Rajakerroin -laskuri")
-  st.markdown(
-      "Syötä joukkueiden maaliodottamat (xG) ja tarkastele ottelun"
-      " todennäköisyyksiä, rajakertoimia sekä odotusarvoa (EV)."
-  )
-
-  col1, col2 = st.columns(2)
-
-  with col1:
-    st.markdown("#### 1. Ottelun tiedot & xG")
-    lambda_koti = st.number_input(
-        "Kotijoukkueen xG",
-        min_value=0.1,
-        max_value=10.0,
-        value=2.5,
-        step=0.1,
-        key="p_lam_koti",
-    )
-    lambda_vieras = st.number_input(
-        "Vierasjoukkueen xG",
-        min_value=0.1,
-        max_value=10.0,
-        value=2.0,
-        step=0.1,
-        key="p_lam_vieras",
+    st.sidebar.error(
+        f"❌ **-EV (Alikerroin):** {ev*100:.1f}%\n\nTarjous {odds:.2f} < Raja"
+        f" {fair_odds:.2f}"
     )
 
-    tarjottu_kerroin = st.number_input(
-        "Epicbetin tarjoama kerroin",
-        min_value=1.01,
-        max_value=50.0,
-        value=2.10,
-        step=0.01,
-        key="p_kerroin",
-    )
-    valittu_kohde = st.selectbox(
-        "Kohde",
-        ["Kotivoitto (1)", "Tasapeli (X)", "Vierasvoitto (2)"],
-        key="p_kohde",
-    )
-
-  def laske_poisson_todennakoisyydet(lam_koti, lam_vieras, max_maalit=10):
-    matriisi = np.outer(
-        [poisson.pmf(i, lam_koti) for i in range(max_maalit + 1)],
-        [poisson.pmf(j, lam_vieras) for j in range(max_maalit + 1)],
-    )
-    kotivoitto = np.sum(np.tril(matriisi, -1))
-    tasapeli = np.sum(np.diag(matriisi))
-    vierasvoitto = np.sum(np.triu(matriisi, 1))
-    return kotivoitto, tasapeli, vierasvoitto
-
-  kv, tp, vv = laske_poisson_todennakoisyydet(lambda_koti, lambda_vieras)
-
-  if "Kotivoitto" in valittu_kohde:
-    todennakoisyys = kv
-  elif "Tasapeli" in valittu_kohde:
-    todennakoisyys = tp
-  else:
-    todennakoisyys = vv
-
-  rajakerroin = 1 / todennakoisyys if todennakoisyys > 0 else 0
-  ev_prosentti = (todennakoisyys * tarjottu_kerroin - 1) * 100
-
-  with col2:
-    st.markdown("#### 2. Laskennan tulokset")
-    st.metric(
-        label="Kotivoiton todennäköisyys",
-        value=f"{kv*100:.1f}%",
-        delta=f"Rajakerroin: {1/kv:.2f}",
-    )
-    st.metric(
-        label="Tasapelin todennäköisyys",
-        value=f"{tp*100:.1f}%",
-        delta=f"Rajakerroin: {1/tp:.2f}",
-    )
-    st.metric(
-        label="Vierasvoiton todennäköisyys",
-        value=f"{vv*100:.1f}%",
-        delta=f"Rajakerroin: {1/vv:.2f}",
-    )
-
-    st.markdown("---")
-    st.write(f"🎯 Valitun kohteen todennäköisyys: **{todennakoisyys*100:.1f}%**")
-    st.write(f"🏷️ Laskettu rajakerroin: **{rajakerroin:.2f}**")
-
-    if ev_prosentti > 0:
-      st.success(f"🔥 Ylikerroin löytyi! EV: **+{ev_prosentti:.1f}%**")
-    else:
-      st.error(f"❌ Ei ylikerrointa. EV: **{ev_prosentti:.1f}%**")
+if st.sidebar.button("➕ Tallenna veto seurantaan", key="sidebar_add_bet_button"):
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        
+        insert_query = """
+            INSERT INTO bets (
+                match_date, league, home_team, away_team, 
+                bet_market, selected_pick, odds, closing_odds, stake, 
+                model_xg_home, model_xg_away, calculated_fair_odds, status
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+        """
+        
+        parts = match_title.split(" - ")
+        h_team = parts[0] if len(parts) > 0 else "Koti"
+        a_team = parts[1] if len(parts) > 1 else "Vieras"
+        
+        full_datetime = datetime.combine(selected_date, datetime.now().time())
+        
+        cursor.execute(insert_query, (
+            full_datetime, sport, h_team, a_team,
+            "1X2", selection_type, odds, odds, actual_stake,
+            0.0, 0.0, fair_odds, 'PENDING'
+        ))
+        
+        connection.commit()
+        cursor.close()
+        connection.close()
+        
+        st.sidebar.success("Veto tallennettu Supabaseen!")
+        st.session_state.bets = load_bets_from_db()
+        st.rerun()
+    except Exception as e:
+        st.sidebar.error(f"Virhe tallennuksessa: {e}")
 
 
 # --- PÄÄSIVU: KASSAN KEHITYS & MITTARIT ---
@@ -520,173 +363,85 @@ col3.metric("Edistyminen", f"{progress_pct:.1f}%")
 
 st.markdown("---")
 
-# --- KUTSUTAAN POISSON-LASKURIA HETI KASSAN JÄLKEEN ---
-render_poisson_calculator()
+# --- LUODAAN VÄLILEHDET ---
+tab1, tab2, tab3 = st.tabs(["📈 Poisson & Laskurit", "📋 Bet Manager & Historia", "✏️ Hallinnoi vetoja"])
 
-st.markdown("---")
+# -------------------------------------------------------------------------
+# VÄLILEHTI 1: POISSON & LASKURIT
+# -------------------------------------------------------------------------
+with tab1:
+    st.subheader("📈 Poisson & Rajakerroin -laskuri")
+    render_poisson_tab()
 
-# --- AVOIMET & TALLENNETUT VEDOT MANAGERINTI ---
-st.subheader("📋 Bet Manager — Vedonlyöntihistoria & Hallinta")
+# -------------------------------------------------------------------------
+# VÄLILEHTI 2: BET MANAGER & HISTORIA
+# -------------------------------------------------------------------------
+with tab2:
+    st.subheader("📋 Bet Manager — Vedonlyöntihistoria & Hallinta")
 
-if st.session_state.bets:
-  total_staked = sum(b.get("Panos (€)", 0.0) for b in st.session_state.bets)
-  total_returned = sum(b.get("Paluu (€)", 0.0) for b in st.session_state.bets)
-  net_profit = total_returned - total_staked
+    df_bets = load_bets_from_db()
 
-  profit_color = "green" if net_profit >= 0 else "red"
-  st.caption(
-      f"📊 Yhteensä asetettu: **{total_staked:.2f} €** | Palautukset:"
-      f" **{total_returned:.2f} €** | Netto: <span"
-      f" style='color:{profit_color};'>**{net_profit:+.2f} €**</span>",
-      unsafe_allow_html=True,
-  )
+    if df_bets:
+        total_staked = sum(b.get("Panos (€)", 0.0) for b in df_bets)
+        total_returned = sum(b.get("Paluu (€)", 0.0) for b in df_bets)
+        net_profit = total_returned - total_staked
 
-  st.markdown("---")
+        profit_color = "green" if net_profit >= 0 else "red"
+        st.caption(
+            f"📊 Yhteensä asetettu: **{total_staked:.2f} €** | Palautukset:"
+            f" **{total_returned:.2f} €** | Netto: <span"
+            f" style='color:{profit_color};'>**{net_profit:+.2f} €**</span>",
+            unsafe_allow_html=True,
+        )
 
-  status_options = ["Avoin", "Voitto 🟢", "Tappio 🔴", "Mitätöity 🟡"]
-
-  for idx, bet in enumerate(st.session_state.bets):
-    c1, c2, c3, c4 = st.columns([1.8, 2.2, 1.2, 1.3])
-
-    sarja = bet.get("Sarja", "")
-    date_str_val = bet.get("Päiväys", "")
-    match_name = bet.get("Ottelu", f"veto_{idx}")
-
-    if date_str_val and date_str_val.strip():
-      c1.markdown(
-          f"**{sarja}**<br><span style='color: #888888; font-size:"
-          f" 0.85em;'>{date_str_val}</span>",
-          unsafe_allow_html=True,
-      )
+        st.markdown("---")
+        st.dataframe(pd.DataFrame(df_bets), use_container_width=True)
     else:
-      c1.markdown(f"**{sarja}**")
+        st.info("Ei vetoja tietokannassa.")
 
-    c2.markdown(
-        f"**{match_name}**<br>👉 *{bet['Valinta']}* (@{bet['Kerroin']})",
-        unsafe_allow_html=True,
-    )
-    c3.markdown(
-        f"Panos: **{bet['Panos (€)']} €**<br>EV: **{bet.get('EV %', '')}**",
-        unsafe_allow_html=True,
-    )
+# -------------------------------------------------------------------------
+# VÄLILEHTI 3: HALLINNOI VETOJA
+# -------------------------------------------------------------------------
+with tab3:
+    st.subheader("✏️ Vetojen tulosten päivitys (Supabase)")
+    
+    raw_df_bets = pd.DataFrame()
+    try:
+        connection = get_db_connection()
+        raw_df_bets = pd.read_sql("SELECT * FROM bets ORDER BY id ASC;", connection)
+        connection.close()
+    except Exception as e:
+        st.error(f"Virhe haettaessa vetoja päivitystä varten: {e}")
 
-    raw_s = str(bet.get("Tila", "Avoin"))
-    if "Voitto" in raw_s:
-      current_clean = "Voitto 🟢"
-    elif "Tappio" in raw_s:
-      current_clean = "Tappio 🔴"
-    elif "Mitätöity" in raw_s:
-      current_clean = "Mitätöity 🟡"
+    if not raw_df_bets.empty:
+        bet_ids = raw_df_bets['id'].tolist()
+        selected_bet_id = st.selectbox("Valitse vedon ID jota muokataan", bet_ids)
+        
+        selected_row = raw_df_bets[raw_df_bets['id'] == selected_bet_id].iloc[0]
+        st.info(f"**Ottelu:** {selected_row['home_team']} – {selected_row['away_team']} | **Kohde:** {selected_row['selected_pick']} | **Kerroin:** {selected_row['odds']} | **Nykyinen status:** {selected_row['status']}")
+        
+        col_status1, col_status2 = st.columns(2)
+        with col_status1:
+            new_status = st.selectbox("Uusi status", ["PENDING", "WON", "LOST", "VOID"], key="status_select_tab3")
+        
+        with col_status2:
+            st.write("") 
+            st.write("")
+            update_button = st.button("Päivitä status kantaan")
+            
+        if update_button:
+            try:
+                connection = get_db_connection()
+                cursor = connection.cursor()
+                update_query = "UPDATE bets SET status = %s WHERE id = %s;"
+                cursor.execute(update_query, (new_status, int(selected_bet_id)))
+                connection.commit()
+                cursor.close()
+                connection.close()
+                
+                st.success(f"Veto ID {selected_bet_id} päivitetty statukselle: {new_status}!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Virhe päivityksessä: {e}")
     else:
-      current_clean = "Avoin"
-
-    new_status = c4.selectbox(
-        "Tila",
-        status_options,
-        index=status_options.index(current_clean)
-        if current_clean in status_options
-        else 0,
-        key=f"loop_status_select_{idx}_{match_name}",
-        label_visibility="collapsed",
-    )
-
-    cc1, cc2 = st.columns([2.0, 0.8])
-
-    default_return = bet.get("Paluu (€)", 0.0)
-    if "Voitto" in new_status and default_return == 0.0:
-      default_return = round(bet["Panos (€)"] * bet["Kerroin"], 2)
-    elif "Tappio" in new_status or "Avoin" in new_status:
-      if current_clean != new_status:
-        default_return = 0.0
-    elif "Mitätöity" in new_status:
-      default_return = float(bet["Panos (€)"])
-
-    new_return = cc1.number_input(
-        "Toteutunut paluu (€)",
-        value=float(default_return),
-        step=0.5,
-        key=f"loop_ret_input_{idx}_{match_name}",
-    )
-
-    cc2.markdown(
-        "<div style='margin-top: 28px;'></div>", unsafe_allow_html=True
-    )
-    if cc2.button(
-        "🗑️ Poista",
-        key=f"loop_del_btn_{idx}_{match_name}",
-        use_container_width=True,
-    ):
-      st.session_state.bets.pop(idx)
-      save_bets_to_file(st.session_state.bets)
-      st.rerun()
-
-    if new_status != bet.get("Tila") or new_return != bet.get("Paluu (€)"):
-      st.session_state.bets[idx]["Tila"] = new_status
-      st.session_state.bets[idx]["Paluu (€)"] = new_return
-      save_bets_to_file(st.session_state.bets)
-      st.rerun()
-
-    st.markdown("---")
-
-  if st.button("⚠️ Tyhjennä koko vetohistoria", key="clear_all_bets_button"):
-    st.session_state.bets = []
-    save_bets_to_file([])
-    st.rerun()
-
-else:
-  st.info(
-      "Ei vielä tallennettuja vetoja. Voit kirjata uuden vedon vasemmasta"
-      " sivupalkista!"
-  )
-
-st.markdown("---")
-
-# --- PDF-HISTORIA TIEDOSTON LATAUS & PARSERI ---
-st.subheader("📄 Tuo Epicbetin historiatietoja (PDF)")
-uploaded_file = st.file_uploader(
-    "Lataa Epicbet-tapahtumahistoria (PDF)", type=["pdf"], key="pdf_uploader_input"
-)
-
-if uploaded_file is not None:
-  try:
-    reader = PdfReader(uploaded_file)
-    full_text = ""
-    for page in reader.pages:
-      full_text += page.extract_text() or ""
-
-    st.success("✅ PDF ladattu ja teksti luettu onnistuneesti!")
-
-    with st.expander("🔍 Näytä PDF:stä luettu raakateksti (Kehittäjänäkymä)"):
-      st.text(full_text[:2000])
-
-  except Exception as e:
-    st.error(f"Virhe PDF-tiedoston lukemisessa: {e}")
-
-st.markdown("---")
-
-# --- TODENNÄKÖISYYSARVION APURI ---
-st.subheader("📊 Kerroin- ja Todennäköisyyslaskuri")
-st.write(
-    "Syötä alta mikä tahansa kerroin, niin näet suoraan, millaisen"
-    " todennäköisyyden bookkeri sille vaatii (implisiittinen todennäköisyys)."
-)
-
-col_a, col_b = st.columns(2)
-
-with col_a:
-  test_odds = st.number_input(
-      "Testattava kerroin",
-      value=1.73,
-      min_value=1.01,
-      step=0.01,
-      key="test_odds_number_input",
-  )
-  implied_probability = (1 / test_odds) * 100
-  st.info(f"🔍 Bookkerin vaatima todennäköisyys: **{implied_probability:.1f}%**")
-
-with col_b:
-  st.write("**Miten tätä käytetään?**")
-  st.markdown("""
-- Jos oma arviosi kohteesta on **suurempi** kuin yllä näkyvä prosentti → kyseessä on ylikerroin (+EV).
-- Jos arviosi on **pienempi** → kohde on alikerroin (-EV), jota matematiikan mukaan ei kannata pelata.
-    """)
+        st.info("Ei päivitettäviä vetoja tietokannassa.")
