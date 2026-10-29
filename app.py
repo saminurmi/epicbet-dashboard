@@ -390,7 +390,6 @@ tab1, tab2, tab3 = st.tabs(["📈 Poisson & Laskurit", "📋 Bet Manager & Histo
 # VÄLILEHTI 1: POISSON & LASKURIT
 # -------------------------------------------------------------------------
 with tab1:
-    st.subheader("📈 Poisson & Rajakerroin -laskuri")
     render_poisson_tab()
 
 # -------------------------------------------------------------------------
