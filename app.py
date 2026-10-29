@@ -17,7 +17,6 @@ try:
     SUPABASE_URL = st.secrets["SUPABASE_URL"]
     SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 except Exception:
-    # Varakonfiguraatio, jos secrets ei ole vielä asetettu
     SUPABASE_URL = "https://icywiagkvqlplfyrkuhq.supabase.co"
     SUPABASE_KEY = ""
 
@@ -385,6 +384,7 @@ st.markdown("---")
 
 # --- LUODAAN VÄLILEHDET ---
 tab1, tab2, tab3 = st.tabs(["📊 Poisson & Laskurit", "📋 Bet Manager & Historia", "✏️ Hallinnoi vetoja"])
+
 # -------------------------------------------------------------------------
 # VÄLILEHTI 1: POISSON & LASKURIT
 # -------------------------------------------------------------------------
