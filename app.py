@@ -2,7 +2,6 @@ from datetime import date, datetime
 import json
 import os
 import plotly.express as px
-import psycopg2
 import pandas as pd
 from pypdf import PdfReader
 import requests
@@ -13,46 +12,66 @@ st.set_page_config(page_title="Epicbet Dashboard", layout="wide")
 
 st.title("🎲 Epicbet — Pelikassan & EV:n seuranta")
 
-# --- TIETOKANTAYHTEYS (SUPABASE) ---
-def get_db_connection():
-    return psycopg2.connect(
-        host="db.icywiagkvqlplfyrkuhq.supabase.co",
-        database="postgres",
-        user="postgres",
-        password="WLpulelShZbg6BdL",
-        port=5432
-    )
+# --- TIETOKANTAYHTEYS (SUPABASE REST API) ---
+try:
+    SUPABASE_URL = st.secrets["SUPABASE_URL"]
+    SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+except Exception:
+    # Varakonfiguraatio, jos secrets ei ole vielä asetettu
+    SUPABASE_URL = "https://icywiagkvqlplfyrkuhq.supabase.co"
+    SUPABASE_KEY = ""
+
+HEADERS = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json",
+    "Prefer": "return=representation"
+}
 
 def load_bets_from_db():
+    """Hakee vedot Supabasesta REST API:n kautta."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return []
     try:
-        connection = get_db_connection()
-        query = "SELECT * FROM bets ORDER BY id DESC;"
-        df = pd.read_sql(query, connection)
-        connection.close()
-        
-        bets_list = []
-        for _, row in df.iterrows():
-            status_map = {
-                'PENDING': 'Avoin',
-                'WON': 'Voitto 🟢',
-                'LOST': 'Tappio 🔴',
-                'VOID': 'Mitätöity 🟡'
-            }
-            bets_list.append({
-                "id": row.get("id"),
-                "Päiväys": str(row.get("match_date", "")),
-                "Sarja": row.get("league", ""),
-                "Ottelu": f"{row.get('home_team', '')} - {row.get('away_team', '')}",
-                "Valinta": row.get("selected_pick", ""),
-                "Kerroin": row.get("odds", 0.0),
-                "Raja": f"{row.get('calculated_fair_odds', 0.0):.2f}",
-                "Arvio %": "-", 
-                "EV %": "-",
-                "Panos (€)": row.get("stake", 0.0),
-                "Tila": status_map.get(row.get("status", "PENDING"), "Avoin"),
-                "Paluu (€)": (row.get("stake", 0.0) * row.get("odds", 0.0)) if row.get("status") == 'WON' else (0.0 if row.get("status") != 'VOID' else row.get("stake", 0.0))
-            })
-        return bets_list
+        url = f"{SUPABASE_URL}/rest/v1/bets?select=*&order=id.desc"
+        response = requests.get(url, headers=HEADERS, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            bets_list = []
+            for row in data:
+                status_map = {
+                    'PENDING': 'Avoin',
+                    'WON': 'Voitto 🟢',
+                    'LOST': 'Tappio 🔴',
+                    'VOID': 'Mitätöity 🟡'
+                }
+                stake = float(row.get("stake", 0.0) or 0.0)
+                odds = float(row.get("odds", 0.0) or 0.0)
+                status = row.get("status", "PENDING")
+                
+                if status == 'WON':
+                    paluu = stake * odds
+                elif status == 'VOID':
+                    paluu = stake
+                else:
+                    paluu = 0.0
+
+                bets_list.append({
+                    "id": row.get("id"),
+                    "Päiväys": str(row.get("match_date", "")),
+                    "Sarja": row.get("league", ""),
+                    "Ottelu": f"{row.get('home_team', '')} - {row.get('away_team', '')}",
+                    "Valinta": row.get("selected_pick", ""),
+                    "Kerroin": odds,
+                    "Raja": f"{float(row.get('calculated_fair_odds', 0.0) or 0.0):.2f}",
+                    "Arvio %": "-", 
+                    "EV %": "-",
+                    "Panos (€)": stake,
+                    "Tila": status_map.get(status, "Avoin"),
+                    "Paluu (€)": paluu
+                })
+            return bets_list
+        return []
     except Exception as e:
         st.error(f"Virhe tietokannan luvussa: {e}")
         return []
@@ -314,36 +333,37 @@ else:
 
 if st.sidebar.button("➕ Tallenna veto seurantaan", key="sidebar_add_bet_button"):
     try:
-        connection = get_db_connection()
-        cursor = connection.cursor()
-        
-        insert_query = """
-            INSERT INTO bets (
-                match_date, league, home_team, away_team, 
-                bet_market, selected_pick, odds, closing_odds, stake, 
-                model_xg_home, model_xg_away, calculated_fair_odds, status
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
-        """
-        
         parts = match_title.split(" - ")
         h_team = parts[0] if len(parts) > 0 else "Koti"
         a_team = parts[1] if len(parts) > 1 else "Vieras"
         
-        full_datetime = datetime.combine(selected_date, datetime.now().time())
+        full_datetime = datetime.combine(selected_date, datetime.now().time()).isoformat()
         
-        cursor.execute(insert_query, (
-            full_datetime, sport, h_team, a_team,
-            "1X2", selection_type, odds, odds, actual_stake,
-            0.0, 0.0, fair_odds, 'PENDING'
-        ))
+        payload = {
+            "match_date": full_datetime,
+            "league": sport,
+            "home_team": h_team,
+            "away_team": a_team,
+            "bet_market": "1X2",
+            "selected_pick": selection_type,
+            "odds": float(odds),
+            "closing_odds": float(odds),
+            "stake": float(actual_stake),
+            "model_xg_home": 0.0,
+            "model_xg_away": 0.0,
+            "calculated_fair_odds": float(fair_odds),
+            "status": "PENDING"
+        }
         
-        connection.commit()
-        cursor.close()
-        connection.close()
+        url = f"{SUPABASE_URL}/rest/v1/bets"
+        response = requests.post(url, headers=HEADERS, json=payload, timeout=5)
         
-        st.sidebar.success("Veto tallennettu Supabaseen!")
-        st.session_state.bets = load_bets_from_db()
-        st.rerun()
+        if response.status_code in [200, 201]:
+            st.sidebar.success("Veto tallennettu Supabaseen!")
+            st.session_state.bets = load_bets_from_db()
+            st.rerun()
+        else:
+            st.sidebar.error(f"Tallennus epäonnistui: {response.text}")
     except Exception as e:
         st.sidebar.error(f"Virhe tallennuksessa: {e}")
 
@@ -405,15 +425,17 @@ with tab2:
 with tab3:
     st.subheader("✏️ Vetojen tulosten päivitys (Supabase)")
     
-    raw_df_bets = pd.DataFrame()
+    raw_bets = []
     try:
-        connection = get_db_connection()
-        raw_df_bets = pd.read_sql("SELECT * FROM bets ORDER BY id ASC;", connection)
-        connection.close()
+        url = f"{SUPABASE_URL}/rest/v1/bets?select=*&order=id.asc"
+        response = requests.get(url, headers=HEADERS, timeout=5)
+        if response.status_code == 200:
+            raw_bets = response.json()
     except Exception as e:
         st.error(f"Virhe haettaessa vetoja päivitystä varten: {e}")
 
-    if not raw_df_bets.empty:
+    if raw_bets:
+        raw_df_bets = pd.DataFrame(raw_bets)
         bet_ids = raw_df_bets['id'].tolist()
         selected_bet_id = st.selectbox("Valitse vedon ID jota muokataan", bet_ids)
         
@@ -431,16 +453,15 @@ with tab3:
             
         if update_button:
             try:
-                connection = get_db_connection()
-                cursor = connection.cursor()
-                update_query = "UPDATE bets SET status = %s WHERE id = %s;"
-                cursor.execute(update_query, (new_status, int(selected_bet_id)))
-                connection.commit()
-                cursor.close()
-                connection.close()
+                url = f"{SUPABASE_URL}/rest/v1/bets?id=eq.{selected_bet_id}"
+                payload = {"status": new_status}
+                response = requests.patch(url, headers=HEADERS, json=payload, timeout=5)
                 
-                st.success(f"Veto ID {selected_bet_id} päivitetty statukselle: {new_status}!")
-                st.rerun()
+                if response.status_code in [200, 204]:
+                    st.success(f"Veto ID {selected_bet_id} päivitetty statukselle: {new_status}!")
+                    st.rerun()
+                else:
+                    st.error(f"Virhe päivityksessä: {response.text}")
             except Exception as e:
                 st.error(f"Virhe päivityksessä: {e}")
     else:
