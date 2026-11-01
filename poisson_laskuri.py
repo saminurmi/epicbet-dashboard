@@ -50,48 +50,6 @@ def render_poisson_tab(koti_xg, vieras_xg):
           "Kohde", ["BTTS Kyllä", "BTTS Ei"], key="p_kohde_btts"
       )
 
-  # Poisson-matriisin laskenta (Scipy + Numpy)
-  def laske_kaikki_todennakoisyydet(lam_koti, lam_vieras, max_maalit=10):
-    matriisi = np.outer(
-        [poisson.pmf(i, lam_koti) for i in range(max_maalit + 1)],
-        [poisson.pmf(j, lam_vieras) for j in range(max_maalit + 1)],
-    )
-
-    # 1X2 todennäköisyydet
-    kotivoitto = np.sum(np.tril(matriisi, -1))
-    tasapeli = np.sum(np.diag(matriisi))
-    vierasvoitto = np.sum(np.triu(matriisi, 1))
-
-    # Maalimäärät ja BTTS
-    over_25 = 0.0
-    under_25 = 0.0
-    btts_kylla = 0.0
-
-    for h in range(max_maalit + 1):
-      for a in range(max_maalit + 1):
-        p = matriisi[h, a]
-        total_goals = h + a
-
-        if total_goals > 2.5:
-          over_25 += p
-        else:
-          under_25 += p
-
-        if h > 0 and a > 0:
-          btts_kylla += p
-
-    btts_ei = 1.0 - btts_kylla
-
-    return {
-        "kv": kotivoitto,
-        "tp": tasapeli,
-        "vv": vierasvoitto,
-        "over_2.5": over_25,
-        "under_2.5": under_25,
-        "btts_kylla": btts_kylla,
-        "btts_ei": btts_ei,
-    }
-
   tulokset = laske_kaikki_todennakoisyydet(koti_xg, vieras_xg)
 
   # Valitaan tarkasteltava todennäköisyys käyttäjän valinnan mukaan
@@ -166,3 +124,46 @@ def render_poisson_tab(koti_xg, vieras_xg):
       st.success(f"🔥 Ylikerroin löytyi! EV: **+{ev_prosentti:.1f}%**")
     else:
       st.error(f"❌ Ei ylikerrointa. EV: **{ev_prosentti:.1f}%**")
+
+
+# Poisson-matriisin laskenta (Scipy + Numpy)
+def laske_kaikki_todennakoisyydet(model_xg_home, model_xg_away, max_maalit=10):
+  matriisi = np.outer(
+      [poisson.pmf(i, model_xg_home) for i in range(max_maalit + 1)],
+      [poisson.pmf(j, model_xg_away) for j in range(max_maalit + 1)],
+  )
+
+  # 1X2 todennäköisyydet
+  kotivoitto = np.sum(np.tril(matriisi, -1))
+  tasapeli = np.sum(np.diag(matriisi))
+  vierasvoitto = np.sum(np.triu(matriisi, 1))
+
+  # Maalimäärät ja BTTS
+  over_25 = 0.0
+  under_25 = 0.0
+  btts_kylla = 0.0
+
+  for h in range(max_maalit + 1):
+    for a in range(max_maalit + 1):
+      p = matriisi[h, a]
+      total_goals = h + a
+
+      if total_goals > 2.5:
+        over_25 += p
+      else:
+        under_25 += p
+
+      if h > 0 and a > 0:
+        btts_kylla += p
+
+  btts_ei = 1.0 - btts_kylla
+
+  return {
+      "kv": kotivoitto,
+      "tp": tasapeli,
+      "vv": vierasvoitto,
+      "over_2.5": over_25,
+      "under_2.5": under_25,
+      "btts_kylla": btts_kylla,
+      "btts_ei": btts_ei,
+  }

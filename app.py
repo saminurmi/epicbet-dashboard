@@ -6,6 +6,7 @@ import pandas as pd
 import requests
 import streamlit as st
 from poisson_laskuri import render_poisson_tab
+from poisson_laskuri import laske_kaikki_todennakoisyydet
 
 st.set_page_config(page_title="Epicbet Dashboard", layout="wide")
 
@@ -163,6 +164,7 @@ selected_league = st.sidebar.selectbox(
     ["NHL", "SM-liiga", "SHL", "Valioliiga", "La Liga", "Bundesliiga"],
     key="sidebar_selected_league_select",
 )
+
 if selected_league == "NHL":
     current_match_list = fetch_nhl_matches_by_date(date_str)
 else:
@@ -187,8 +189,72 @@ model_xg_home = col_xg1.number_input("Koti xG", value=2.30, step=0.05, key="side
 model_xg_away = col_xg2.number_input("Vieras xG", value=1.70, step=0.05, key="sidebar_model_xg_away_input")
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("📊 1X2 Kertoimet & Bookkerin Arvio")
+st.sidebar.markdown("### 🎯 Valittu veto & Oma Arvio")
 
+# 1. Markkinan valinta vasemmalle puolelle synkronoituna Poisson-laskurin kanssa
+valittu_markkina_vasen = st.sidebar.selectbox(
+    "Valitse pelattava markkina",
+    ["1X2 (Voittaja)", "Yli/Alle 2.5 maalia", "BTTS (Molemmat tekevät)"],
+    key="vasen_markkina_valinta",
+)
+
+# 2. Pelattava merkki riippuu valitusta markkinasta
+if valittu_markkina_vasen == "1X2 (Voittaja)":
+  pelattava_merkki = st.sidebar.selectbox(
+      "Pelattava merkki",
+      ["Kotivoitto (1)", "Tasapeli (X)", "Vierasvoitto (2)"],
+      key="vasen_merkki_1x2",
+  )
+elif valittu_markkina_vasen == "Yli/Alle 2.5 maalia":
+  pelattava_merkki = st.sidebar.selectbox(
+      "Pelattava merkki",
+      ["Yli 2.5 maalia", "Alle 2.5 maalia"],
+      key="vasen_merkki_ou",
+  )
+else:
+  pelattava_merkki = st.sidebar.selectbox(
+      "Pelattava merkki", ["BTTS Kyllä", "BTTS Ei"], key="vasen_merkki_btts"
+  )
+
+# 3. Haetaan automaattisesti mallin (Poissonin) todennäköisyys valitulle kohteelle Kelly-laskentaa varten
+tulokset_vasen = laske_kaikki_todennakoisyydet(model_xg_home, model_xg_away)
+
+if valittu_markkina_vasen == "1X2 (Voittaja)":
+  if "Kotivoitto" in pelattava_merkki:
+    mallin_todennakoisyys = tulokset_vasen["kv"]
+  elif "Tasapeli" in pelattava_merkki:
+    mallin_todennakoisyys = tulokset_vasen["tp"]
+  else:
+    mallin_todennakoisyys = tulokset_vasen["vv"]
+elif valittu_markkina_vasen == "Yli/Alle 2.5 maalia":
+  if "Yli" in pelattava_merkki:
+    mallin_todennakoisyys = tulokset_vasen["over_2.5"]
+  else:
+    mallin_todennakoisyys = tulokset_vasen["under_2.5"]
+else:
+  if "Kyllä" in pelattava_merkki:
+    mallin_todennakoisyys = tulokset_vasen["btts_kylla"]
+  else:
+    mallin_todennakoisyys = tulokset_vasen["btts_ei"]
+
+st.sidebar.write(
+    f"📊 Mallin arvio kohteelle: **{mallin_todennakoisyys*100:.1f}%**"
+)
+
+# 4. Oma todennäköisyysarvio (mahdollisuus käyttää mallin arviota tai säätää manuaalisesti)
+kayta_mallia = st.sidebar.checkbox(
+    "Käytä suoraan mallin arviota", value=True, key="vasen_kayta_mallia"
+)
+
+if kayta_mallia:
+  oma_todennakoisyys = mallin_todennakoisyys * 100
+else:
+  oma_todennakoisyys = st.sidebar.slider(
+      "Oma todennäköisyysarvio (%)", 1.0, 99.0, mallin_todennakoisyys * 100, 0.5
+  )
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("📊 1X2 Kertoimet & Bookkerin Arvio")
 col_o1, col_ox, col_o2 = st.sidebar.columns(3)
 odds_1 = col_o1.number_input(
     "1 (Koti)", value=2.08, min_value=1.01, step=0.01, key="sidebar_odds_1_input"
