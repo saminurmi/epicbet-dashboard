@@ -136,7 +136,7 @@ st.sidebar.header("⚙️ EV & Kelly -Laskuri")
 
 current_bankroll = st.sidebar.number_input(
     "Nykyinen kassa (€)",
-    value=56.27,
+    value=65.30,
     step=1.0,
     key="sidebar_current_bankroll_input",
 )
@@ -160,10 +160,9 @@ date_str = selected_date.strftime("%Y-%m-%d")
 
 selected_league = st.sidebar.selectbox(
     "Valitse sarja / liiga",
-    ["NHL", "SM-liiga", "Valioliiga"],
+    ["NHL", "SM-liiga", "SHL", "Valioliiga", "La Liga", "Bundesliiga"],
     key="sidebar_selected_league_select",
 )
-
 if selected_league == "NHL":
     current_match_list = fetch_nhl_matches_by_date(date_str)
 else:
@@ -339,7 +338,7 @@ tab1, tab2, tab3 = st.tabs(["📊 Poisson & Laskurit", "📋 Bet Manager & Histo
 # VÄLILEHTI 1: POISSON & LASKURIT
 # -------------------------------------------------------------------------
 with tab1:
-    render_poisson_tab()
+    render_poisson_tab(model_xg_home, model_xg_away)
     
     st.markdown("---")
     st.subheader("💾 Tallenna valittu veto seurantaan")

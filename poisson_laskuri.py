@@ -2,17 +2,17 @@ import streamlit as st
 import numpy as np
 from scipy.stats import poisson
 
-def render_poisson_tab():
+def render_poisson_tab(koti_xg, vieras_xg):
     
     st.subheader("🔢 Poisson & Rajakerroin -laskuri")
-    st.markdown("Syötä joukkueiden maaliodottamat (xG) ja tarkastele ottelun todennäköisyyksiä, rajakertoimia sekä odotusarvoa (EV).")
+    st.markdown("Ottelun maaliodottamat (xG) tulevat suoraan valitusta kohteesta. Tarkastele todennäköisyyksiä, rajakertoimia sekä odotusarvoa (EV).")
 
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("#### 1. Ottelun tiedot & xG")
-        lambda_koti = st.number_input("Kotijoukkueen xG", min_value=0.1, max_value=10.0, value=2.5, step=0.1, key="p_lam_koti")
-        lambda_vieras = st.number_input("Vierasjoukkueen xG", min_value=0.1, max_value=10.0, value=2.0, step=0.1, key="p_lam_vieras")
+        st.markdown("#### 1. Ottelun tiedot & Valinnat")
+        st.write(f"⚽ Kotijoukkueen xG: **{koti_xg:.2f}**")
+        st.write(f"⚽ Vierasjoukkueen xG: **{vieras_xg:.2f}**")
         
         tarjottu_kerroin = st.number_input("Epicbetin tarjoama kerroin", min_value=1.01, max_value=50.0, value=2.10, step=0.01, key="p_kerroin")
         valittu_kohde = st.selectbox("Kohde", ["Kotivoitto (1)", "Tasapeli (X)", "Vierasvoitto (2)"], key="p_kohde")
@@ -27,7 +27,7 @@ def render_poisson_tab():
         vierasvoitto = np.sum(np.triu(matriisi, 1))
         return kotivoitto, tasapeli, vierasvoitto
 
-    kv, tp, vv = laske_poisson_todennakoisyydet(lambda_koti, lambda_vieras)
+    kv, tp, vv = laske_poisson_todennakoisyydet(koti_xg, vieras_xg)
 
     if "Kotivoitto" in valittu_kohde:
         todennakoisyys = kv
