@@ -494,8 +494,7 @@ with tab3:
     with st.form("add_match_form"):
         col_m_date, col_m_league = st.columns(2)
         new_match_date = col_m_date.date_input("Ottelupäivä", value=selected_date)
-        new_match_league = col_m_league.selectbox("Sarja", ["SM-liiga", "Valioliiga", "NHL", "Muu"])
-        
+        new_match_league = col_m_league.selectbox("Sarja", ["SM-liiga", "SHL", "Valioliiga", "La Liga", "Bundesliiga", "NHL", "Muu"])
         col_m_home, col_m_away = st.columns(2)
         new_home_team = col_m_home.text_input("Kotijoukkue", value=default_home)
         new_away_team = col_m_away.text_input("Vierasjoukkue", value=default_away)
