@@ -53,12 +53,18 @@ def load_bets_from_db():
                 fair_o = float(row.get("calculated_fair_odds", 0.0) or 0.0)
                 status = row.get("status", "PENDING")
                 
-                if status == 'WON':
-                    paluu = stake * odds
-                elif status == 'VOID':
-                    paluu = stake
+                # Tarkistetaan ensin onko kantaan tallennettu erillinen payout (esim. manuaalinen tappio/voitto)
+                db_payout = row.get("payout")
+                if db_payout is not None:
+                    paluu = float(db_payout)
                 else:
-                    paluu = 0.0
+                    # Fallback vanhalle logiikalle, jos payout on tyhjä
+                    if status == 'WON':
+                        paluu = stake * odds
+                    elif status == 'VOID':
+                        paluu = stake
+                    else:
+                        paluu = 0.0
 
                 ev_val = ((1.0 / fair_o) * odds - 1.0) * 100 if fair_o > 0 else 0.0
 
@@ -67,6 +73,7 @@ def load_bets_from_db():
                     "Päiväys": str(row.get("match_date", ""))[:16],
                     "Sarja": row.get("league", ""),
                     "Ottelu": f"{row.get('home_team', '')} - {row.get('away_team', '')}",
+                    "Markkina": row.get("bet_market", "1X2"),
                     "Valinta": row.get("selected_pick", ""),
                     "Kerroin": odds,
                     "Raja": f"{fair_o:.2f}",
@@ -79,7 +86,6 @@ def load_bets_from_db():
         return []
     except Exception as e:
         return []
-
 def load_matches_from_db(league_name: str, date_str: str):
     """Hakee tietokantaan tallennetut ottelut tietylle päivälle ja sarjalle ilman duplikaatteja."""
     if not SUPABASE_KEY:
@@ -102,15 +108,26 @@ if "bets" not in st.session_state:
     st.session_state.bets = load_bets_from_db()
 
 
-# --- AUTOMAATTINEN NHL-OTTELUIDEN HAKU ---
-@st.cache_data(ttl=3600)
-def fetch_nhl_matches_by_date(target_date: str):
+@st.cache_data(ttl=60)  # Lyhyempi tai pois päältä, jotta uudet näkyy heti
+def hae_ottelut_paivalle(target_date: str):
+    match_list = []
+    
+    # 1. Haetaan ensin Supabasesta manuaalisesti / kantaan tallennetut pelit
+    try:
+        m_url = f"{SUPABASE_URL}/rest/v1/matches?match_date=eq.{target_date}&select=home_team,away_team"
+        resp = requests.get(m_url, headers=HEADERS, timeout=5)
+        if resp.status_code == 200:
+            for m in resp.json():
+                match_list.append(f"{m['home_team']} - {m['away_team']}")
+    except Exception:
+        pass
+
+    # 2. Jos kyseessä on NHL-sarja, voidaan hakea myös NHL-apista (tai yhdistää)
     try:
         url = f"https://api-web.nhle.com/v1/schedule/{target_date}"
         response = requests.get(url, timeout=5)
         if response.status_code == 200:
             data = response.json()
-            match_list = []
             for game_week in data.get("gameWeek", []):
                 for game in game_week.get("games", []):
                     home = (
@@ -123,14 +140,16 @@ def fetch_nhl_matches_by_date(target_date: str):
                         + " "
                         + game.get("awayTeam", {}).get("commonName", {}).get("default", "")
                     )
-                    match_list.append(f"{home.strip()} - {away.strip()}")
-            if match_list:
-                return list(set(match_list))
+                    ottelu_str = f"{home.strip()} - {away.strip()}"
+                    if ottelu_str not in match_list:
+                        match_list.append(ottelu_str)
     except Exception:
         pass
 
-    return [f"Ei NHL-otteluita päivänä {target_date}"]
+    if match_list:
+        return list(set(match_list))
 
+    return [f"Ei otteluita päivänä {target_date}"]
 
 # --- SIVUPALKKI: KASSANHALLINTA & EV-LASKURI ---
 st.sidebar.header("⚙️ EV & Kelly -Laskuri")
@@ -166,7 +185,7 @@ selected_league = st.sidebar.selectbox(
 )
 
 if selected_league == "NHL":
-    current_match_list = fetch_nhl_matches_by_date(date_str)
+    current_match_list = hae_ottelut_paivalle(date_str)
 else:
     db_matches = load_matches_from_db(selected_league, date_str)
     current_match_list = db_matches if db_matches else [f"Ei otteluita päivänä {date_str} (Lisää Hallinnoi-välilehdeltä)"]
@@ -409,12 +428,25 @@ with tab1:
     st.markdown("---")
     st.subheader("💾 Tallenna valittu veto seurantaan")
     
+   # Haetaan markkinatyyppi suoraan Poisson-laskurin puolelta session statesta
+    market_type = st.session_state.get("p_markkina_tyyppi", "1X2")
+    
+    # Haetaan myös vastaava kohde suoraan oikeasta valinnasta
+    if market_type == "1X2":
+        valittu_kohde = st.session_state.get("p_kohde_1x2", "Kotivoitto (1)")
+    elif market_type == "Yli/Alle 2.5 maalia":
+        valittu_kohde = st.session_state.get("p_kohde_ou", "Yli 2.5 maalia")
+    elif market_type == "BTTS":
+        valittu_kohde = st.session_state.get("p_kohde_btts", "BTTS Kyllä")
+    else:
+        valittu_kohde = st.session_state.get("p_kohde_live", "Live / Muu valinta")
+    
     is_valid_match = "Ei " not in match_title and " - " in match_title
     
     col_save1, col_save2 = st.columns([2, 1])
     with col_save1:
         if is_valid_match:
-            st.info(f"**Kohde:** {match_title} | **Valinta:** {selection_type} | **Panos:** {actual_stake:.2f} € | **Kerroin:** {odds:.2f} | **Rajakerroin:** {fair_odds:.2f}")
+            st.info(f"**Kohde:** {match_title} | **Markkina:** {market_type} | **Valinta:** {selection_type} | **Panos:** {actual_stake:.2f} € | **Kerroin:** {odds:.2f} | **Rajakerroin:** {fair_odds:.2f}")
         else:
             st.warning("⚠️ Valitulla päivällä ei ole voimassa olevaa ottelua. Lisää ottelu 'Hallinnoi vetoja & Otteluita' -välilehdeltä.")
     
@@ -437,7 +469,7 @@ with tab1:
                     "league": sport,
                     "home_team": h_team,
                     "away_team": a_team,
-                    "bet_market": "1X2",
+                    "bet_market": market_type,
                     "selected_pick": selection_type,
                     "odds": float(odds),
                     "closing_odds": float(odds),
@@ -458,9 +490,12 @@ with tab1:
                     st.error(f"Tallennus epäonnistui: {response.text}")
             except Exception as e:
                 st.error(f"Virhe tallennuksessa: {e}")
-
+                
 # -------------------------------------------------------------------------
-# VÄLILEHTI 2: BET MANAGER & HISTORIA (Nyt myös suora poisto!)
+# VÄLILEHTI 2: BET MANAGER & HISTORIA
+# -------------------------------------------------------------------------
+# -------------------------------------------------------------------------
+# VÄLILEHTI 2: BET MANAGER & HISTORIA
 # -------------------------------------------------------------------------
 with tab2:
     st.subheader("📋 Bet Manager — Vedonlyöntihistoria, Graafit & Poisto")
@@ -483,20 +518,43 @@ with tab2:
 
         profit_color = "green" if net_profit >= 0 else "red"
         st.caption(
-            f"📊 Yhteensä asetettu: **{total_staked:.2f} €** | Palautukset:"
-            f" **{total_returned:.2f} €** | Netto: <span"
-            f" style='color:{profit_color};'>**{net_profit:+.2f} €**</span>",
+            f"📊 Yhteensä asetettu: **{total_staked:.2f} €** | Palautukset: **{total_returned:.2f} €** | Netto: <span style='color:{profit_color};'>**{net_profit:+.2f} €**</span>",
             unsafe_allow_html=True,
         )
 
         st.markdown("---")
         
-        # Suora poisto-osio heti taulukon yläpuolelle
+        # Graafiosuus palautettu mukaan
+        try:
+            import plotly.express as px
+            import pandas as pd
+            
+            graph_df = pd.DataFrame(df_bets)
+            if "Päiväys" in graph_df.columns and "Paluu (€)" in graph_df.columns and "Panos (€)" in graph_df.columns:
+                graph_df = graph_df.sort_values("Päiväys")
+                graph_df["Netto"] = graph_df["Paluu (€)"] - graph_df["Panos (€)"]
+                graph_df["Kumulatiivinen Netto"] = graph_df["Netto"].cumsum()
+                
+                fig = px.line(
+                    graph_df, 
+                    x="Päiväys", 
+                    y="Kumulatiivinen Netto", 
+                    title="📈 Kumulatiivinen tuotto aikajanalta",
+                    markers=True
+                )
+                fig.update_layout(xaxis_title="Päiväys", yaxis_title="Tuotto (€)")
+                st.plotly_chart(fig, use_container_width=True)
+        except Exception as e:
+            st.info(f"Graafin lataus ei onnistunut: {e}")
+
+        st.markdown("---")
+        
         with st.expander("🗑️ Poista tai hallinnoi yksittäistä vetoa suoraan tästä"):
             if raw_bets:
                 bet_options = {}
                 for r in raw_bets:
-                    label = f"ID {r['id']} | {str(r['match_date'])[:10]} | {r['home_team']} - {r['away_team']} ({r['selected_pick']})"
+                    market = r.get('bet_market', '1X2')
+                    label = f"ID {r['id']} | {str(r['match_date'])[:10]} | {r['home_team']} - {r['away_team']} | [{market}] ({r['selected_pick']})"
                     bet_options[label] = r['id']
                 
                 selected_del_label = st.selectbox("Valitse poistettava veto", list(bet_options.keys()), key="direct_del_select")
@@ -506,7 +564,7 @@ with tab2:
                 with col_d1:
                     st.write(f"Valittu ID: **{selected_del_id}**")
                 with col_d2:
-                    if st.button("🗑️ Vahvista poisto", type="primary", use_container_width=True):
+                    if st.button("🗑️ Vahvista poisto", type="primary", use_container_width=True, key="confirm_delete_button"):
                         try:
                             del_url = f"{SUPABASE_URL}/rest/v1/bets?id=eq.{selected_del_id}"
                             del_resp = requests.delete(del_url, headers=HEADERS, timeout=5)
@@ -518,31 +576,56 @@ with tab2:
                         except Exception as e:
                             st.error(f"Virhe: {e}")
 
-        st.dataframe(pd.DataFrame(df_bets), use_container_width=True)
+        edited_df = st.data_editor(
+            pd.DataFrame(df_bets),
+            column_config={
+                "Markkina": st.column_config.SelectboxColumn(
+                    "Markkina",
+                    help="Valitse vedon markkinatyyppi",
+                    options=["1X2", "Yli/Alle 2.5 maalia", "BTTS", "Live"],
+                    required=True,
+                ),
+                "Paluu (€)": st.column_config.NumberColumn(
+                    "Paluu (€)",
+                    help="Syötä toteutunut paluu (esim. voitto tai negatiivinen tappio kuten -6)",
+                    format="%.2f €",
+                    step=0.01,
+                )
+            },
+            disabled=["id", "Päiväys", "Sarja", "Ottelu", "Valinta", "Kerroin", "Raja", "EV %", "Panos (€)", "Tila"],
+            use_container_width=True,
+            key="bets_data_editor"
+        )
 
-        # Kassan kehitysgraafi
-        st.markdown("### 📈 Kassan kehitys")
-        try:
-            chart_df = pd.DataFrame(df_bets).sort_values("id")
-            chart_df["Netto"] = chart_df["Paluu (€)"] - chart_df["Panos (€)"]
-            chart_df["Kumulatiivinen tulos"] = chart_df["Netto"].cumsum()
-            chart_df["Kassa"] = current_bankroll + chart_df["Kumulatiivinen tulos"] - chart_df["Netto"].iloc[-1] if not chart_df.empty else current_bankroll
-
-            fig = px.line(
-                chart_df,
-                x="Päiväys",
-                y="Kassa",
-                markers=True,
-                title="Kassan kehitys vetojen mukaan",
-                labels={"Kassa": "Kassa (€)", "Päiväys": "Ajankohta"}
-            )
-            fig.update_layout(template="plotly_dark", margin=dict(l=20, r=20, t=40, b=20))
-            st.plotly_chart(fig, use_container_width=True)
-        except Exception:
-            st.info("Ei vielä tarpeeksi dataa graafin piirtämiseen.")
-    else:
-        st.info("Ei vetoja tietokannassa.")
-
+        if st.button("💾 Tallenna muutokset kantaan", type="secondary", key="save_bets_button"):
+            try:
+                for index, row in edited_df.iterrows():
+                    bet_id = row["id"]
+                    new_market = row["Markkina"]
+                    
+                    raw_return = row["Paluu (€)"]
+                    new_return = float(raw_return) if pd.notna(raw_return) else 0.0
+                    
+                    orig_row = next((b for b in df_bets if b["id"] == bet_id), None)
+                    if orig_row:
+                        update_data = {}
+                        if orig_row.get("Markkina") != new_market:
+                            update_data["bet_market"] = new_market
+                            
+                        db_return_key = "payout"
+                        orig_return = float(orig_row.get("Paluu (€)", 0.0) or 0.0)
+                        
+                        if orig_return != new_return:
+                            update_data[db_return_key] = new_return
+                            
+                        if update_data:
+                            patch_url = f"{SUPABASE_URL}/rest/v1/bets?id=eq.{bet_id}"
+                            requests.patch(patch_url, headers=HEADERS, json=update_data, timeout=5)
+                
+                st.success("Muutokset päivitetty onnistuneesti kantaan!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Virhe tallennuksessa: {e}")
 # -------------------------------------------------------------------------
 # VÄLILEHTI 3: HALLINNOI VETOJA JA LISÄÄ OTTELUITA
 # -------------------------------------------------------------------------
@@ -565,7 +648,14 @@ with tab3:
         new_home_team = col_m_home.text_input("Kotijoukkue", value=default_home)
         new_away_team = col_m_away.text_input("Vierasjoukkue", value=default_away)
         
-        submit_match = st.form_submit_button("➕ Tallenna ottelu kantaan", type="primary", use_container_width=True)
+        #submit_match = st.form_submit_button("➕ Tallenna ottelu kantaan", type="primary", use_container_width=True)
+        submit_match = st.form_submit_button(
+            "➕ Tallenna ottelu kantaan ➕", 
+            type="primary", 
+            use_container_width=True, 
+            key="save_match_button_unique"
+        )
+        #submit_match = st.form_submit_button("➕ Tallenna ottelu kantaan", type="primary", use_container_width=True)
         if submit_match:
             if not new_home_team or not new_away_team:
                 st.error("❌ Täytä sekä koti- että vierasjoukkueen nimi!")
@@ -578,15 +668,20 @@ with tab3:
                         "away_team": new_away_team.strip()
                     }
                     m_url = f"{SUPABASE_URL}/rest/v1/matches"
-                    m_resp = requests.post(m_url, headers=HEADERS, json=match_payload, timeout=5)
+                    
+                    # Tulostetaan varmuuden vuoksi myös terminaaliin mitä lähetetään
+                    print(f"Lähetetään ottelu: {match_payload}")
+                    
+                    m_resp = requests.post(url=m_url, headers=HEADERS, json=match_payload, timeout=5)
+                    
                     if m_resp.status_code in [200, 201]:
                         st.success(f"✅ Ottelu {new_home_team} - {new_away_team} lisätty kantaan!")
                         st.rerun()
                     else:
-                        st.error(f"❌ Tallennus epäonnistui: {m_resp.text}")
+                        # Tässä näytetään nyt tarkka HTTP-statuskoodi ja Supabasen virheteksti
+                        st.error(f"❌ Tallennus epäonnistui (Status {m_resp.status_code}): {m_resp.text}")
                 except Exception as e:
                     st.error(f"❌ Yhteysvirhe: {e}")
-
     st.markdown("---")
     st.subheader("✏️ Vetotietojen statuspäivitys (Supabase)")
     
@@ -596,14 +691,15 @@ with tab3:
         if raw_bets:
             bet_options = {}
             for r in raw_bets:
-                label = f"ID {r['id']} | {str(r['match_date'])[:10]} | {r['home_team']} - {r['away_team']} ({r['selected_pick']})"
+                market = r.get('bet_market', '1X2')
+                label = f"ID {r['id']} | {str(r['match_date'])[:10]} | {r['home_team']} - {r['away_team']} | [{market}] ({r['selected_pick']})"
                 bet_options[label] = r['id']
             
             selected_label = st.selectbox("Valitse vedon ID jota päivitetään", list(bet_options.keys()))
             selected_bet_id = bet_options[selected_label]
             
             selected_row = next(r for r in raw_bets if r['id'] == selected_bet_id)
-            st.info(f"**Valittu:** {selected_row['home_team']} – {selected_row['away_team']} | **Kohde:** {selected_row['selected_pick']} | **Kerroin:** {selected_row['odds']} | **Status:** {selected_row['status']}")
+            st.info(f"**Valittu:** {selected_row['home_team']} – {selected_row['away_team']} | **Markkina:** {selected_row.get('bet_market', '1X2')} | **Kohde:** {selected_row['selected_pick']} | **Kerroin:** {selected_row['odds']} | **Status:** {selected_row['status']}")
             
             new_status = st.selectbox("Uusi status", ["PENDING", "WON", "LOST", "VOID"], key="status_select_tab3")
             if st.button("Päivitä status kantaan", use_container_width=True):
