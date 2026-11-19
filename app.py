@@ -1,6 +1,7 @@
 from datetime import date, datetime
 import json
 import os
+from bet_editor import render_bet_editor
 import plotly.express as px
 import pandas as pd
 import requests
@@ -154,17 +155,53 @@ def hae_ottelut_paivalle(target_date: str):
 # --- SIVUPALKKI: KASSANHALLINTA & EV-LASKURI ---
 st.sidebar.header("⚙️ EV & Kelly -Laskuri")
 
+def load_bankroll_from_db(default_val: float = 113.0) -> float:
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/bankroll_state?id=eq.main&select=current_bankroll",
+            headers=HEADERS,
+            timeout=5,
+        )
+        if r.status_code == 200 and r.json():
+            return float(r.json()[0]["current_bankroll"])
+    except Exception:
+        pass
+    return default_val
+
+def save_bankroll_to_db(new_val: float) -> bool:
+    try:
+        r = requests.patch(
+            f"{SUPABASE_URL}/rest/v1/bankroll_state?id=eq.main",
+            headers=HEADERS,
+            json={"current_bankroll": float(new_val)},
+            timeout=5,
+        )
+        return r.status_code in (200, 204)
+    except Exception:
+        return False
+
+if "db_bankroll_loaded" not in st.session_state:
+    st.session_state["sidebar_current_bankroll_input"] = load_bankroll_from_db(113.0)
+    st.session_state["db_bankroll_loaded"] = True
+
 current_bankroll = st.sidebar.number_input(
     "Nykyinen kassa (€)",
-    value=65.30,
     step=1.0,
+    format="%.2f",
     key="sidebar_current_bankroll_input",
 )
 
+if st.sidebar.button("💾 Tallenna kassa", use_container_width=True):
+    if save_bankroll_to_db(current_bankroll):
+        st.sidebar.success(f"Kassa {current_bankroll:.2f} € tallennettu!")
+    else:
+        st.sidebar.error("Kassan tallennus epäonnistui.")
+
 target_bankroll = st.sidebar.number_input(
     "Tavoitesaldo (€)",
-    value=60.0,
-    step=1.0,
+    value=150.0,
+    step=5.0,
+    format="%.2f",
     key="sidebar_target_bankroll_input",
 )
 st.sidebar.markdown("---")
@@ -494,9 +531,6 @@ with tab1:
 # -------------------------------------------------------------------------
 # VÄLILEHTI 2: BET MANAGER & HISTORIA
 # -------------------------------------------------------------------------
-# -------------------------------------------------------------------------
-# VÄLILEHTI 2: BET MANAGER & HISTORIA
-# -------------------------------------------------------------------------
 with tab2:
     st.subheader("📋 Bet Manager — Vedonlyöntihistoria, Graafit & Poisto")
 
@@ -524,30 +558,55 @@ with tab2:
 
         st.markdown("---")
         
-        # Graafiosuus palautettu mukaan
+# Graafiosuus selkeytettynä (päiväkohtainen kumulatiivinen tuotto)
         try:
             import plotly.express as px
             import pandas as pd
-            
+
             graph_df = pd.DataFrame(df_bets)
             if "Päiväys" in graph_df.columns and "Paluu (€)" in graph_df.columns and "Panos (€)" in graph_df.columns:
-                graph_df = graph_df.sort_values("Päiväys")
-                graph_df["Netto"] = graph_df["Paluu (€)"] - graph_df["Panos (€)"]
-                graph_df["Kumulatiivinen Netto"] = graph_df["Netto"].cumsum()
-                
-                fig = px.line(
-                    graph_df, 
-                    x="Päiväys", 
-                    y="Kumulatiivinen Netto", 
-                    title="📈 Kumulatiivinen tuotto aikajanalta",
-                    markers=True
+                if "Tila" in graph_df.columns:
+                    graph_df = graph_df[graph_df["Tila"] != "Avoin"].copy()
+
+                graph_df["Päivä"] = pd.to_datetime(graph_df["Päiväys"], errors="coerce").dt.date
+                graph_df = graph_df.dropna(subset=["Päivä"])
+                graph_df["Netto"] = (
+                    pd.to_numeric(graph_df["Paluu (€)"], errors="coerce").fillna(0.0)
+                    - pd.to_numeric(graph_df["Panos (€)"], errors="coerce").fillna(0.0)
                 )
-                fig.update_layout(xaxis_title="Päiväys", yaxis_title="Tuotto (€)")
+
+                daily_df = (
+                    graph_df.groupby("Päivä", as_index=False)
+                    .agg(Päivän_netto=("Netto", "sum"), Vetoja=("Netto", "count"))
+                    .sort_values("Päivä")
+                )
+                daily_df["Kumulatiivinen tuotto (€)"] = daily_df["Päivän_netto"].cumsum()
+                daily_df["Kassa (€)"] = (
+                    current_bankroll
+                    - daily_df["Kumulatiivinen tuotto (€)"].iloc[-1]
+                    + daily_df["Kumulatiivinen tuotto (€)"]
+                )
+
+                fig = px.line(
+                    daily_df,
+                    x="Päivä",
+                    y="Kumulatiivinen tuotto (€)",
+                    title="📈 Kumulatiivinen tuotto (päiväkohtainen)",
+                    markers=True,
+                    hover_data={"Päivän_netto": ":.2f", "Kassa (€)": ":.2f", "Vetoja": True},
+                )
+                fig.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.6)
+                fig.update_traces(line=dict(width=3), marker=dict(size=8))
+                fig.update_layout(
+                    xaxis_title="Päiväys",
+                    yaxis_title="Tuotto (€)",
+                    hovermode="x unified",
+                    xaxis=dict(tickformat="%d.%m.%Y"),
+                )
                 st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
             st.info(f"Graafin lataus ei onnistunut: {e}")
-
-        st.markdown("---")
+            st.markdown("---")
         
         with st.expander("🗑️ Poista tai hallinnoi yksittäistä vetoa suoraan tästä"):
             if raw_bets:
@@ -576,56 +635,10 @@ with tab2:
                         except Exception as e:
                             st.error(f"Virhe: {e}")
 
-        edited_df = st.data_editor(
-            pd.DataFrame(df_bets),
-            column_config={
-                "Markkina": st.column_config.SelectboxColumn(
-                    "Markkina",
-                    help="Valitse vedon markkinatyyppi",
-                    options=["1X2", "Yli/Alle 2.5 maalia", "BTTS", "Live"],
-                    required=True,
-                ),
-                "Paluu (€)": st.column_config.NumberColumn(
-                    "Paluu (€)",
-                    help="Syötä toteutunut paluu (esim. voitto tai negatiivinen tappio kuten -6)",
-                    format="%.2f €",
-                    step=0.01,
-                )
-            },
-            disabled=["id", "Päiväys", "Sarja", "Ottelu", "Valinta", "Kerroin", "Raja", "EV %", "Panos (€)", "Tila"],
-            use_container_width=True,
-            key="bets_data_editor"
-        )
+        
 
-        if st.button("💾 Tallenna muutokset kantaan", type="secondary", key="save_bets_button"):
-            try:
-                for index, row in edited_df.iterrows():
-                    bet_id = row["id"]
-                    new_market = row["Markkina"]
-                    
-                    raw_return = row["Paluu (€)"]
-                    new_return = float(raw_return) if pd.notna(raw_return) else 0.0
-                    
-                    orig_row = next((b for b in df_bets if b["id"] == bet_id), None)
-                    if orig_row:
-                        update_data = {}
-                        if orig_row.get("Markkina") != new_market:
-                            update_data["bet_market"] = new_market
-                            
-                        db_return_key = "payout"
-                        orig_return = float(orig_row.get("Paluu (€)", 0.0) or 0.0)
-                        
-                        if orig_return != new_return:
-                            update_data[db_return_key] = new_return
-                            
-                        if update_data:
-                            patch_url = f"{SUPABASE_URL}/rest/v1/bets?id=eq.{bet_id}"
-                            requests.patch(patch_url, headers=HEADERS, json=update_data, timeout=5)
-                
-                st.success("Muutokset päivitetty onnistuneesti kantaan!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Virhe tallennuksessa: {e}")
+    render_bet_editor(df_bets, SUPABASE_URL, HEADERS, SUPABASE_KEY)
+    
 # -------------------------------------------------------------------------
 # VÄLILEHTI 3: HALLINNOI VETOJA JA LISÄÄ OTTELUITA
 # -------------------------------------------------------------------------
