@@ -578,41 +578,49 @@ with tab1:
     else:
         valittu_kohde = st.session_state.get("p_kohde_live", "Live / Muu valinta")
 
-tulokset_vasen = laske_kaikki_todennakoisyydet(model_xg_home, model_xg_away)
+    tulokset_vasen = laske_kaikki_todennakoisyydet(model_xg_home, model_xg_away)
 
-if market_type == "1X2":
-    if "Kotivoitto" in valittu_kohde:
+    try:
+        if market_type == "1X2":
+            if "Kotivoitto" in valittu_kohde:
+                mallin_todennakoisyys = tulokset_vasen["kv"]
+            elif "Tasapeli" in valittu_kohde:
+                mallin_todennakoisyys = tulokset_vasen["tp"]
+            else:
+                mallin_todennakoisyys = tulokset_vasen["vv"]
+        elif market_type == "Tuplamahdollisuus (1X/X2)":
+            if "1X" in valittu_kohde or "Kotivoitto" in valittu_kohde:
+                mallin_todennakoisyys = tulokset_vasen["kv"] + tulokset_vasen["tp"]
+            else:
+                mallin_todennakoisyys = tulokset_vasen["tp"] + tulokset_vasen["vv"]
+        elif market_type == "Yli/Alle maalit":
+            osat = str(valittu_kohde).split()
+            suunta_key = "yli" if len(osat) > 0 and osat[0].lower() == "yli" else "alle"
+            raja_val = float(osat[1]) if len(osat) > 1 else 2.5
+            raja_key = f"{raja_val:.1f}"
+            mallin_todennakoisyys = (
+                tulokset_vasen["maalit"]
+                .get(raja_key, {})
+                .get(suunta_key, tulokset_vasen["maalit"]["2.5"]["yli"])
+            )
+        elif market_type == "BTTS":
+            if "Kyllä" in valittu_kohde:
+                mallin_todennakoisyys = tulokset_vasen["btts_kylla"]
+            else:
+                mallin_todennakoisyys = tulokset_vasen["btts_ei"]
+        else:
+            mallin_todennakoisyys = tulokset_vasen["tp"]
+    except Exception:
         mallin_todennakoisyys = tulokset_vasen["kv"]
-    elif "Tasapeli" in valittu_kohde:
-        mallin_todennakoisyys = tulokset_vasen["tp"]
-    else:
-        mallin_todennakoisyys = tulokset_vasen["vv"]
-elif market_type == "Tuplamahdollisuus (1X/X2)":
-    if "1X" in valittu_kohde or "Kotivoitto" in valittu_kohde:
-        mallin_todennakoisyys = tulokset_vasen["kv"] + tulokset_vasen["tp"]
-    else:
-        mallin_todennakoisyys = tulokset_vasen["tp"] + tulokset_vasen["vv"]
-elif market_type == "Yli/Alle maalit":
-    osat = str(valittu_kohde).split()
-    suunta_key = "yli" if osat[0].lower() == "yli" else "alle"
-    raja_key = f"{float(osat[1]):.1f}"
-    mallin_todennakoisyys = tulokset_vasen["maalit"][raja_key][suunta_key]
-elif market_type == "BTTS":
-    if "Kyllä" in valittu_kohde:
-        mallin_todennakoisyys = tulokset_vasen["btts_kylla"]
-    else:
-        mallin_todennakoisyys = tulokset_vasen["btts_ei"]
-else:
-    mallin_todennakoisyys = tulokset_vasen["tp"]
-    is_valid_match = "Ei " not in match_title and " - " in match_title
 
-    col_save1, col_save2 = st.columns([2, 1])
     bet_type_choice = st.radio(
         "Vedon tyyppi",
         ["Malli", "Fiilis"],
         horizontal=True,
         key="bet_type_choice_tab1",
     )
+
+    is_valid_match = "Ei " not in match_title and " - " in match_title
 
     col_save1, col_save2 = st.columns([3, 1], vertical_alignment="center")
     with col_save1:
@@ -648,7 +656,6 @@ else:
 
                 full_datetime = datetime.combine(selected_date, datetime.now().time()).isoformat()
 
-                # Haetaan laskurin viimeisimmät valinnat, jos ne on asetettu
                 tallennus_markkina = st.session_state.get("calc_markkina", market_type)
                 tallennus_kohde = st.session_state.get("calc_kohde", selection_type)
                 tallennus_kerroin = float(st.session_state.get("calc_kerroin", odds))
@@ -668,7 +675,7 @@ else:
                     "model_xg_away": float(model_xg_away),
                     "calculated_fair_odds": tallennus_rajakerroin,
                     "status": "PENDING",
-                    "bet_type": bet_type_choice,  # "Malli" tai "Fiilis"
+                    "bet_type": bet_type_choice,
                 }
 
                 url = f"{SUPABASE_URL}/rest/v1/bets"
@@ -681,7 +688,7 @@ else:
                 else:
                     st.error(f"Tallennus epäonnistui: {response.text}")
             except Exception as e:
-                st.error(f"Virhe tallennuksessa: {e}")            
+                st.error(f"Virhe tallennuksessa: {e}")
 # -------------------------------------------------------------------------
 # VÄLILEHTI 2: BET MANAGER & HISTORIA
 # -------------------------------------------------------------------------

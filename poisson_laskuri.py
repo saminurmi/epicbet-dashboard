@@ -32,6 +32,21 @@ def _synkkaa_vasemmalle():
             st.session_state["vasen_merkki_btts"] = kohde
 
 
+def _dixon_coles_kerroin(h, a, lam_h, lam_a, rho):
+    """Dixon-Coles-korjauskerroin matalamaalisille tuloksille (0-0, 1-0, 0-1, 1-1)."""
+    if rho == 0.0:
+        return 1.0
+    if h == 0 and a == 0:
+        return max(0.0, 1.0 - (lam_h * lam_a * rho))
+    if h == 1 and a == 0:
+        return max(0.0, 1.0 + (lam_a * rho))
+    if h == 0 and a == 1:
+        return max(0.0, 1.0 + (lam_h * rho))
+    if h == 1 and a == 1:
+        return max(0.0, 1.0 - rho)
+    return 1.0
+
+
 def render_poisson_tab(koti_xg, vieras_xg):
 
     st.subheader("🔢 Poisson & Rajakerroin -laskuri")
@@ -40,14 +55,22 @@ def render_poisson_tab(koti_xg, vieras_xg):
         "Tarkastele todennäköisyyksiä, rajakertoimia sekä odotusarvoa (EV)."
     )
 
-    tulokset = laske_kaikki_todennakoisyydet(koti_xg, vieras_xg)
-
     col1, col2 = st.columns(2)
 
     with col1:
         st.markdown("#### 1. Ottelun tiedot & Valinnat")
         st.write(f"⚽ Kotijoukkueen xG: **{koti_xg:.2f}**")
         st.write(f"⚽ Vierasjoukkueen xG: **{vieras_xg:.2f}**")
+
+        dc_rho = st.slider(
+            "Dixon–Coles korjaus (ρ) — matalat maalit / tasapeli",
+            min_value=-0.15,
+            max_value=0.15,
+            value=0.0,
+            step=0.01,
+            key="p_dc_rho",
+            help="0.00 = perus-Poisson. Säätää 0-0, 1-0, 0-1 ja 1-1 tulosten painotusta ja normalisoi matriisin.",
+        )
 
         markkina_tyyppi = st.selectbox(
             "Valitse markkina",
@@ -119,6 +142,8 @@ def render_poisson_tab(koti_xg, vieras_xg):
                 ["Live / Muu valinta"],
                 key="p_kohde_live",
             )
+
+    tulokset = laske_kaikki_todennakoisyydet(koti_xg, vieras_xg, rho=dc_rho)
 
     # Valitaan tarkasteltava todennäköisyys käyttäjän valinnan mukaan
     if markkina_tyyppi == "1X2":
@@ -242,12 +267,22 @@ def render_poisson_tab(koti_xg, vieras_xg):
     st.session_state["calc_todennakoisyys"] = todennakoisyys
 
 
-# Poisson-matriisin laskenta (Scipy + Numpy)
-def laske_kaikki_todennakoisyydet(model_xg_home, model_xg_away, max_maalit=10):
+# Poisson-matriisin laskenta (Scipy + Numpy + Dixon-Coles)
+def laske_kaikki_todennakoisyydet(model_xg_home, model_xg_away, max_maalit=10, rho=0.0):
     matriisi = np.outer(
         [poisson.pmf(i, model_xg_home) for i in range(max_maalit + 1)],
         [poisson.pmf(j, model_xg_away) for j in range(max_maalit + 1)],
     )
+
+    if rho != 0.0:
+        for h in range(min(2, max_maalit + 1)):
+            for a in range(min(2, max_maalit + 1)):
+                matriisi[h, a] *= _dixon_coles_kerroin(
+                    h, a, float(model_xg_home), float(model_xg_away), float(rho)
+                )
+        summa = float(np.sum(matriisi))
+        if summa > 0:
+            matriisi = matriisi / summa
 
     # 1X2 todennäköisyydet
     kotivoitto = float(np.sum(np.tril(matriisi, -1)))
