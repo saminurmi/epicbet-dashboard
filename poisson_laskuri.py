@@ -56,11 +56,22 @@ def render_poisson_tab(koti_xg, vieras_xg):
             on_change=_synkkaa_vasemmalle,
         )
 
+        # Synkronoidaan kerroin vasemmasta sivupalkista vain kun sivupalkin valinta/kerroin muuttuu
+        if "sidebar_sync_odds" in st.session_state:
+            sync_avain = st.session_state.get("sidebar_sync_odds_key", "")
+            if st.session_state.get("_p_kerroin_last_sync") != sync_avain:
+                st.session_state["p_kerroin"] = round(
+                    max(1.01, min(50.0, float(st.session_state["sidebar_sync_odds"]))),
+                    2,
+                )
+                st.session_state["_p_kerroin_last_sync"] = sync_avain
+        elif "p_kerroin" not in st.session_state:
+            st.session_state["p_kerroin"] = 2.10
+
         tarjottu_kerroin = st.number_input(
             "Epicbetin tarjoama kerroin",
             min_value=1.01,
             max_value=50.0,
-            value=2.10,
             step=0.01,
             key="p_kerroin",
         )

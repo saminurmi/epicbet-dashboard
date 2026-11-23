@@ -330,48 +330,6 @@ else:
       key="vasen_merkki_btts",
       on_change=_synkkaa_oikealle,
   )
-
-# 3. Haetaan automaattisesti mallin (Poissonin) todennäköisyys valitulle kohteelle Kelly-laskentaa varten
-tulokset_vasen = laske_kaikki_todennakoisyydet(model_xg_home, model_xg_away)
-
-if valittu_markkina_vasen == "1X2 (Voittaja)":
-  if "Kotivoitto" in pelattava_merkki:
-    mallin_todennakoisyys = tulokset_vasen["kv"]
-  elif "Tasapeli" in pelattava_merkki:
-    mallin_todennakoisyys = tulokset_vasen["tp"]
-  else:
-    mallin_todennakoisyys = tulokset_vasen["vv"]
-elif valittu_markkina_vasen == "Money Line":
-  if "Kotivoitto" in pelattava_merkki:
-    mallin_todennakoisyys = tulokset_vasen["ml_kv"]
-  else:
-    mallin_todennakoisyys = tulokset_vasen["ml_vv"]
-elif valittu_markkina_vasen == "Maalit":
-  osat = str(pelattava_merkki).split()
-  suunta_key = "yli" if osat[0].lower() == "yli" else "alle"
-  raja_key = f"{float(osat[1]):.1f}"
-  mallin_todennakoisyys = tulokset_vasen["maalit"][raja_key][suunta_key]
-else:
-  if "Kyllä" in pelattava_merkki:
-    mallin_todennakoisyys = tulokset_vasen["btts_kylla"]
-  else:
-    mallin_todennakoisyys = tulokset_vasen["btts_ei"]
-
-st.sidebar.write(
-    f"📊 Mallin arvio kohteelle: **{mallin_todennakoisyys*100:.1f}%**"
-)
-# 4. Oma todennäköisyysarvio (mahdollisuus käyttää mallin arviota tai säätää manuaalisesti)
-kayta_mallia = st.sidebar.checkbox(
-    "Käytä suoraan mallin arviota", value=True, key="vasen_kayta_mallia"
-)
-
-if kayta_mallia:
-  oma_todennakoisyys = mallin_todennakoisyys * 100
-else:
-  oma_todennakoisyys = st.sidebar.slider(
-      "Oma todennäköisyysarvio (%)", 1.0, 99.0, mallin_todennakoisyys * 100, 0.5
-  )
-
 st.sidebar.markdown("---")
 st.sidebar.subheader("📊 1X2 Kertoimet & Bookkerin Arvio")
 col_o1, col_ox, col_o2 = st.sidebar.columns(3)
@@ -408,6 +366,18 @@ selection_type = st.sidebar.radio(
     key="sidebar_selection_type_radio",
 )
 
+
+# Synkronoidaan vasemman sivupalkin 1/X/2-valinta oikean laskurin kohteeseen
+merkki_map = {
+    "1 (Kotivoitto)": "Kotivoitto (1)",
+    "X (Tasapeli)": "Tasapeli (X)",
+    "2 (Vierasvoitto)": "Vierasvoitto (2)",
+}
+if st.session_state.get("_edellinen_sidebar_merkki") != selection_type:
+    st.session_state["p_markkina_tyyppi"] = "1X2"
+    st.session_state["p_kohde_1x2"] = merkki_map[selection_type]
+    st.session_state["_edellinen_sidebar_merkki"] = selection_type
+
 if "1" in selection_type:
     odds = odds_1
     suggested_p = fair_prob_1
@@ -418,23 +388,69 @@ else:
     odds = odds_2
     suggested_p = fair_prob_2
 
+st.session_state["sidebar_sync_odds"] = float(odds)
+st.session_state["sidebar_sync_odds_key"] = f"{selection_type}_{round(float(odds), 4)}"
+    
+
+# Haetaan Poisson-todennäköisyys (%) suoraan mallista valitulle kohteelle / merkille
+
+tulokset_vasen = laske_kaikki_todennakoisyydet(model_xg_home, model_xg_away)
+kohde_nyt = st.session_state.get(
+    "calc_kohde", st.session_state.get("p_kohde_1x2", "Kotivoitto (1)")
+)
+markkina_nyt = st.session_state.get(
+    "calc_markkina", st.session_state.get("p_markkina_tyyppi", "1X2")
+)
+
+
+if markkina_nyt in ("1X2", "1X2 (Voittaja)"):
+    if "1" in selection_type or "Kotivoitto" in kohde_nyt:
+        mallin_todennakoisyys = tulokset_vasen["kv"]
+    elif "X" in selection_type or "Tasapeli" in kohde_nyt:
+        mallin_todennakoisyys = tulokset_vasen["tp"]
+    else:
+        mallin_todennakoisyys = tulokset_vasen["vv"]
+elif markkina_nyt == "Money Line":
+    if "Kotivoitto" in kohde_nyt:
+        mallin_todennakoisyys = tulokset_vasen["ml_kv"]
+    else:
+        mallin_todennakoisyys = tulokset_vasen["ml_vv"]
+elif markkina_nyt in ("Maalit", "Yli/Alle maalit"):
+    osat = str(kohde_nyt).split()
+    suunta_key = "yli" if osat[0].lower() == "yli" else "alle"
+    raja_key = f"{float(osat[1]):.1f}"
+    mallin_todennakoisyys = tulokset_vasen["maalit"][raja_key][suunta_key]
+else:
+    if "Kyllä" in kohde_nyt:
+        mallin_todennakoisyys = tulokset_vasen["btts_kylla"]
+    else:
+        mallin_todennakoisyys = tulokset_vasen["btts_ei"]
+
+poisson_p = round(float(mallin_todennakoisyys) * 100.0, 1)
+
+poisson_p = max(1.0, min(99.0, poisson_p))
+poisson_str = f"Poisson ({poisson_p:.1f}%)"
+fair_str = f"Bookkeri ({suggested_p:.1f}%)"
+
 st.sidebar.markdown(f"**Oma todennäköisyysarvio kohteelle {selection_type} (%)**")
 
-fair_str = f"Bookkeri ({suggested_p:.1f}%)"
 preset_choice = st.sidebar.segmented_control(
     "Valitse %-pika-arvio",
-    options=["40%", "45%", "50%", "55%", "60%", fair_str, "Muu / Syötä tarkka"],
+    options=[
+        "40%",
+        "45%",
+        "50%",
+        "55%",
+        "60%",
+        poisson_str,
+        fair_str,
+        "Muu / Syötä tarkka",
+    ],
     default="50%",
     key="sidebar_preset_choice_segmented",
 )
 
-# Haetaan Poisson-laskurin todennäköisyys (%) tai fallbackina suggested_p
-if "calc_todennakoisyys" in st.session_state:
-    poisson_p_pct = round(float(st.session_state["calc_todennakoisyys"]) * 100.0, 1)
-else:
-    poisson_p_pct = round(float(suggested_p), 1)
-
-# Päivitetään syöttökentän arvo automaattisesti, kun ottelu, markkina tai kohde vaihtuu
+# Päivitetään syöttökentän session_state ENNEN number_input-widgettiä
 nykyinen_valinta_avain = (
     f"{match_title}_{st.session_state.get('calc_markkina', '')}_"
     f"{st.session_state.get('calc_kohde', selection_type)}"
@@ -444,19 +460,21 @@ if (
     "sidebar_prob_percent_input" not in st.session_state
     or st.session_state.get("_edellinen_valinta_avain") != nykyinen_valinta_avain
 ):
-    st.session_state["sidebar_prob_percent_input"] = max(1.0, min(99.0, poisson_p_pct))
+    st.session_state["sidebar_prob_percent_input"] = float(poisson_p)
     st.session_state["_edellinen_valinta_avain"] = nykyinen_valinta_avain
 
-if preset_choice == "40%":
-    prob_percent = 40.0
-elif preset_choice == "45%":
-    prob_percent = 45.0
-elif preset_choice == "50%":
-    prob_percent = 50.0
-elif preset_choice == "55%":
-    prob_percent = 55.0
-elif preset_choice == "60%":
-    prob_percent = 60.0
+preset_values = {
+    "40%": 40.0,
+    "45%": 45.0,
+    "50%": 50.0,
+    "55%": 55.0,
+    "60%": 60.0,
+}
+
+if preset_choice in preset_values:
+    prob_percent = preset_values[preset_choice]
+elif preset_choice == poisson_str:
+    prob_percent = poisson_p
 elif preset_choice == fair_str:
     prob_percent = round(suggested_p, 1)
 else:
@@ -467,6 +485,7 @@ else:
         step=0.1,
         key="sidebar_prob_percent_input",
     )
+
 est_prob = prob_percent / 100.0
 fair_odds = 1.0 / est_prob if est_prob > 0 else 0.0
 st.sidebar.info(f"🎯 **Tarvittava minimikerroin (+EV):** vähintään **{fair_odds:.2f}**")
@@ -483,7 +502,6 @@ kelly_fraction_choice = st.sidebar.selectbox(
     }[x],
     key="sidebar_kelly_fraction_select",
 )
-
 ev = (est_prob * odds) - 1.0
 b = odds - 1.0
 kelly_full = ((est_prob * odds - 1.0) / b) if b > 0 else 0
@@ -560,6 +578,32 @@ with tab1:
     else:
         valittu_kohde = st.session_state.get("p_kohde_live", "Live / Muu valinta")
 
+tulokset_vasen = laske_kaikki_todennakoisyydet(model_xg_home, model_xg_away)
+
+if market_type == "1X2":
+    if "Kotivoitto" in valittu_kohde:
+        mallin_todennakoisyys = tulokset_vasen["kv"]
+    elif "Tasapeli" in valittu_kohde:
+        mallin_todennakoisyys = tulokset_vasen["tp"]
+    else:
+        mallin_todennakoisyys = tulokset_vasen["vv"]
+elif market_type == "Tuplamahdollisuus (1X/X2)":
+    if "1X" in valittu_kohde or "Kotivoitto" in valittu_kohde:
+        mallin_todennakoisyys = tulokset_vasen["kv"] + tulokset_vasen["tp"]
+    else:
+        mallin_todennakoisyys = tulokset_vasen["tp"] + tulokset_vasen["vv"]
+elif market_type == "Yli/Alle maalit":
+    osat = str(valittu_kohde).split()
+    suunta_key = "yli" if osat[0].lower() == "yli" else "alle"
+    raja_key = f"{float(osat[1]):.1f}"
+    mallin_todennakoisyys = tulokset_vasen["maalit"][raja_key][suunta_key]
+elif market_type == "BTTS":
+    if "Kyllä" in valittu_kohde:
+        mallin_todennakoisyys = tulokset_vasen["btts_kylla"]
+    else:
+        mallin_todennakoisyys = tulokset_vasen["btts_ei"]
+else:
+    mallin_todennakoisyys = tulokset_vasen["tp"]
     is_valid_match = "Ei " not in match_title and " - " in match_title
 
     col_save1, col_save2 = st.columns([2, 1])
