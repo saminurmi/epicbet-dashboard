@@ -1,8 +1,0 @@
-streamlit
-numpy
-scipy
-plotly
-pypdf
-requests
-psycopg2-binary
-

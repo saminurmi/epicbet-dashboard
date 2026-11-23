@@ -8,6 +8,7 @@ import requests
 import streamlit as st
 from poisson_laskuri import render_poisson_tab
 from poisson_laskuri import laske_kaikki_todennakoisyydet
+from poisson_model import calculate_match_markets
 
 st.set_page_config(page_title="Epicbet Dashboard", layout="wide")
 
@@ -247,11 +248,57 @@ model_xg_away = col_xg2.number_input("Vieras xG", value=1.70, step=0.05, key="si
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 🎯 Valittu veto & Oma Arvio")
 
+from poisson_laskuri import MAALIRAJAT, laske_kaikki_todennakoisyydet
+
+VASEN_MARKKINAT = [
+    "1X2 (Voittaja)",
+    "Money Line",
+    "Maalit",
+    "BTTS (Molemmat tekevät)",
+]
+MAALI_VAIHTOEHDOT = [
+    f"{suunta} {r:.1f} maalia"
+    for r in MAALIRAJAT
+    for suunta in ("Yli", "Alle")
+]
+
+
+def _synkkaa_oikealle():
+  vasen_m = st.session_state.get("vasen_markkina_valinta")
+  if vasen_m == "1X2 (Voittaja)":
+    st.session_state["p_markkina_tyyppi"] = "1X2"
+    merkki = st.session_state.get("vasen_merkki_1x2")
+    if merkki in ["Kotivoitto (1)", "Tasapeli (X)", "Vierasvoitto (2)"]:
+      st.session_state["p_kohde_1x2"] = merkki
+  elif vasen_m == "Money Line":
+    st.session_state["p_markkina_tyyppi"] = "Money Line"
+    merkki = st.session_state.get("vasen_merkki_ml")
+    if merkki in ["Kotivoitto ML (1)", "Vierasvoitto ML (2)"]:
+      st.session_state["p_kohde_ml"] = merkki
+  elif vasen_m == "Maalit":
+    st.session_state["p_markkina_tyyppi"] = "Maalit"
+    merkki = st.session_state.get("vasen_merkki_maalit")
+    if merkki:
+      st.session_state["p_kohde_maalit"] = merkki
+      try:
+        raja_val = float(str(merkki).split()[1])
+        if raja_val in MAALIRAJAT:
+          st.session_state["p_maaliraja"] = raja_val
+      except (IndexError, ValueError):
+        pass
+  elif vasen_m == "BTTS (Molemmat tekevät)":
+    st.session_state["p_markkina_tyyppi"] = "BTTS"
+    merkki = st.session_state.get("vasen_merkki_btts")
+    if merkki in ["BTTS Kyllä", "BTTS Ei"]:
+      st.session_state["p_kohde_btts"] = merkki
+
+
 # 1. Markkinan valinta vasemmalle puolelle synkronoituna Poisson-laskurin kanssa
 valittu_markkina_vasen = st.sidebar.selectbox(
     "Valitse pelattava markkina",
-    ["1X2 (Voittaja)", "Yli/Alle 2.5 maalia", "BTTS (Molemmat tekevät)"],
+    VASEN_MARKKINAT,
     key="vasen_markkina_valinta",
+    on_change=_synkkaa_oikealle,
 )
 
 # 2. Pelattava merkki riippuu valitusta markkinasta
@@ -260,16 +307,28 @@ if valittu_markkina_vasen == "1X2 (Voittaja)":
       "Pelattava merkki",
       ["Kotivoitto (1)", "Tasapeli (X)", "Vierasvoitto (2)"],
       key="vasen_merkki_1x2",
+      on_change=_synkkaa_oikealle,
   )
-elif valittu_markkina_vasen == "Yli/Alle 2.5 maalia":
+elif valittu_markkina_vasen == "Money Line":
   pelattava_merkki = st.sidebar.selectbox(
       "Pelattava merkki",
-      ["Yli 2.5 maalia", "Alle 2.5 maalia"],
-      key="vasen_merkki_ou",
+      ["Kotivoitto ML (1)", "Vierasvoitto ML (2)"],
+      key="vasen_merkki_ml",
+      on_change=_synkkaa_oikealle,
+  )
+elif valittu_markkina_vasen == "Maalit":
+  pelattava_merkki = st.sidebar.selectbox(
+      "Pelattava merkki",
+      MAALI_VAIHTOEHDOT,
+      key="vasen_merkki_maalit",
+      on_change=_synkkaa_oikealle,
   )
 else:
   pelattava_merkki = st.sidebar.selectbox(
-      "Pelattava merkki", ["BTTS Kyllä", "BTTS Ei"], key="vasen_merkki_btts"
+      "Pelattava merkki",
+      ["BTTS Kyllä", "BTTS Ei"],
+      key="vasen_merkki_btts",
+      on_change=_synkkaa_oikealle,
   )
 
 # 3. Haetaan automaattisesti mallin (Poissonin) todennäköisyys valitulle kohteelle Kelly-laskentaa varten
@@ -282,11 +341,16 @@ if valittu_markkina_vasen == "1X2 (Voittaja)":
     mallin_todennakoisyys = tulokset_vasen["tp"]
   else:
     mallin_todennakoisyys = tulokset_vasen["vv"]
-elif valittu_markkina_vasen == "Yli/Alle 2.5 maalia":
-  if "Yli" in pelattava_merkki:
-    mallin_todennakoisyys = tulokset_vasen["over_2.5"]
+elif valittu_markkina_vasen == "Money Line":
+  if "Kotivoitto" in pelattava_merkki:
+    mallin_todennakoisyys = tulokset_vasen["ml_kv"]
   else:
-    mallin_todennakoisyys = tulokset_vasen["under_2.5"]
+    mallin_todennakoisyys = tulokset_vasen["ml_vv"]
+elif valittu_markkina_vasen == "Maalit":
+  osat = str(pelattava_merkki).split()
+  suunta_key = "yli" if osat[0].lower() == "yli" else "alle"
+  raja_key = f"{float(osat[1]):.1f}"
+  mallin_todennakoisyys = tulokset_vasen["maalit"][raja_key][suunta_key]
 else:
   if "Kyllä" in pelattava_merkki:
     mallin_todennakoisyys = tulokset_vasen["btts_kylla"]
@@ -296,7 +360,6 @@ else:
 st.sidebar.write(
     f"📊 Mallin arvio kohteelle: **{mallin_todennakoisyys*100:.1f}%**"
 )
-
 # 4. Oma todennäköisyysarvio (mahdollisuus käyttää mallin arviota tai säätää manuaalisesti)
 kayta_mallia = st.sidebar.checkbox(
     "Käytä suoraan mallin arviota", value=True, key="vasen_kayta_mallia"
@@ -365,6 +428,25 @@ preset_choice = st.sidebar.segmented_control(
     key="sidebar_preset_choice_segmented",
 )
 
+# Haetaan Poisson-laskurin todennäköisyys (%) tai fallbackina suggested_p
+if "calc_todennakoisyys" in st.session_state:
+    poisson_p_pct = round(float(st.session_state["calc_todennakoisyys"]) * 100.0, 1)
+else:
+    poisson_p_pct = round(float(suggested_p), 1)
+
+# Päivitetään syöttökentän arvo automaattisesti, kun ottelu, markkina tai kohde vaihtuu
+nykyinen_valinta_avain = (
+    f"{match_title}_{st.session_state.get('calc_markkina', '')}_"
+    f"{st.session_state.get('calc_kohde', selection_type)}"
+)
+
+if (
+    "sidebar_prob_percent_input" not in st.session_state
+    or st.session_state.get("_edellinen_valinta_avain") != nykyinen_valinta_avain
+):
+    st.session_state["sidebar_prob_percent_input"] = max(1.0, min(99.0, poisson_p_pct))
+    st.session_state["_edellinen_valinta_avain"] = nykyinen_valinta_avain
+
 if preset_choice == "40%":
     prob_percent = 40.0
 elif preset_choice == "45%":
@@ -380,13 +462,11 @@ elif preset_choice == fair_str:
 else:
     prob_percent = st.sidebar.number_input(
         "Syötä tarkka %-arvio",
-        value=50.0,
         min_value=1.0,
         max_value=99.0,
-        step=0.5,
+        step=0.1,
         key="sidebar_prob_percent_input",
     )
-
 est_prob = prob_percent / 100.0
 fair_odds = 1.0 / est_prob if est_prob > 0 else 0.0
 st.sidebar.info(f"🎯 **Tarvittava minimikerroin (+EV):** vähintään **{fair_odds:.2f}**")
@@ -461,73 +541,103 @@ tab1, tab2, tab3 = st.tabs(["📊 Poisson & Laskurit", "📋 Bet Manager & Histo
 # -------------------------------------------------------------------------
 with tab1:
     render_poisson_tab(model_xg_home, model_xg_away)
-    
+
     st.markdown("---")
     st.subheader("💾 Tallenna valittu veto seurantaan")
-    
-   # Haetaan markkinatyyppi suoraan Poisson-laskurin puolelta session statesta
+
+    # Haetaan markkinatyyppi suoraan Poisson-laskurin puolelta session statesta
     market_type = st.session_state.get("p_markkina_tyyppi", "1X2")
-    
+
     # Haetaan myös vastaava kohde suoraan oikeasta valinnasta
     if market_type == "1X2":
         valittu_kohde = st.session_state.get("p_kohde_1x2", "Kotivoitto (1)")
-    elif market_type == "Yli/Alle 2.5 maalia":
+    elif market_type == "Tuplamahdollisuus (1X/X2)":
+        valittu_kohde = st.session_state.get("p_kohde_dc", "Kotivoitto tai tasapeli (1X)")
+    elif market_type == "Yli/Alle maalit":
         valittu_kohde = st.session_state.get("p_kohde_ou", "Yli 2.5 maalia")
     elif market_type == "BTTS":
         valittu_kohde = st.session_state.get("p_kohde_btts", "BTTS Kyllä")
     else:
         valittu_kohde = st.session_state.get("p_kohde_live", "Live / Muu valinta")
-    
+
     is_valid_match = "Ei " not in match_title and " - " in match_title
-    
+
     col_save1, col_save2 = st.columns([2, 1])
+    bet_type_choice = st.radio(
+        "Vedon tyyppi",
+        ["Malli", "Fiilis"],
+        horizontal=True,
+        key="bet_type_choice_tab1",
+    )
+
+    col_save1, col_save2 = st.columns([3, 1], vertical_alignment="center")
     with col_save1:
         if is_valid_match:
-            st.info(f"**Kohde:** {match_title} | **Markkina:** {market_type} | **Valinta:** {selection_type} | **Panos:** {actual_stake:.2f} € | **Kerroin:** {odds:.2f} | **Rajakerroin:** {fair_odds:.2f}")
+            st.info(
+                f"**Kohde:** {match_title} | **Markkina:** {market_type} | "
+                f"**Valinta:** {selection_type} | **Panos:** {actual_stake:.2f} € | "
+                f"**Kerroin:** {odds:.2f} | **Rajakerroin:** {fair_odds:.2f}"
+            )
         else:
-            st.warning("⚠️ Valitulla päivällä ei ole voimassa olevaa ottelua. Lisää ottelu 'Hallinnoi vetoja & Otteluita' -välilehdeltä.")
-    
+            st.warning(
+                "⚠️ Valitulla päivällä ei ole voimassa olevaa ottelua. "
+                "Lisää ottelu 'Hallinnoi vetoja & Otteluita' -välilehdeltä."
+            )
+
     with col_save2:
-        save_button = st.button("➕ Tallenna veto kantaan", type="primary", use_container_width=True, disabled=not is_valid_match)
-        
+        save_button = st.button(
+            "➕ Tallenna veto kantaan",
+            type="primary",
+            use_container_width=True,
+            disabled=not is_valid_match,
+            key="save_bet_button_tab1",
+        )
+
     if save_button and is_valid_match:
         if not SUPABASE_KEY:
             st.error("Supabase API-avain puuttuu!")
         else:
             try:
                 parts = match_title.split(" - ")
-                h_team = parts[0] if len(parts) > 0 else "Koti"
-                a_team = parts[1] if len(parts) > 1 else "Vieras"
-                
+                h_team = parts[0].strip() if len(parts) > 0 else "Koti"
+                a_team = parts[1].strip() if len(parts) > 1 else "Vieras"
+
                 full_datetime = datetime.combine(selected_date, datetime.now().time()).isoformat()
-                
+
+                # Haetaan laskurin viimeisimmät valinnat, jos ne on asetettu
+                tallennus_markkina = st.session_state.get("calc_markkina", market_type)
+                tallennus_kohde = st.session_state.get("calc_kohde", selection_type)
+                tallennus_kerroin = float(st.session_state.get("calc_kerroin", odds))
+                tallennus_rajakerroin = float(st.session_state.get("calc_rajakerroin", fair_odds))
+
                 payload = {
                     "match_date": full_datetime,
                     "league": sport,
                     "home_team": h_team,
                     "away_team": a_team,
-                    "bet_market": market_type,
-                    "selected_pick": selection_type,
-                    "odds": float(odds),
-                    "closing_odds": float(odds),
+                    "bet_market": tallennus_markkina,
+                    "selected_pick": tallennus_kohde,
+                    "odds": tallennus_kerroin,
+                    "closing_odds": tallennus_kerroin,
                     "stake": float(actual_stake),
                     "model_xg_home": float(model_xg_home),
                     "model_xg_away": float(model_xg_away),
-                    "calculated_fair_odds": float(fair_odds),
-                    "status": "PENDING"
+                    "calculated_fair_odds": tallennus_rajakerroin,
+                    "status": "PENDING",
+                    "bet_type": bet_type_choice,  # "Malli" tai "Fiilis"
                 }
-                
+
                 url = f"{SUPABASE_URL}/rest/v1/bets"
                 response = requests.post(url, headers=HEADERS, json=payload, timeout=5)
-                
+
                 if response.status_code in [200, 201]:
-                    st.success("Veto tallennettu onnistuneesti Supabaseen!")
+                    st.success(f"Veto ({bet_type_choice}) tallennettu onnistuneesti Supabaseen!")
                     st.session_state.bets = load_bets_from_db()
+                    st.rerun()
                 else:
                     st.error(f"Tallennus epäonnistui: {response.text}")
             except Exception as e:
-                st.error(f"Virhe tallennuksessa: {e}")
-                
+                st.error(f"Virhe tallennuksessa: {e}")            
 # -------------------------------------------------------------------------
 # VÄLILEHTI 2: BET MANAGER & HISTORIA
 # -------------------------------------------------------------------------
@@ -543,22 +653,72 @@ with tab2:
     except Exception:
         pass
 
+    bet_type_by_id = {r.get("id"): (r.get("bet_type") or "Malli") for r in raw_bets if r.get("id") is not None}
+
     df_bets = load_bets_from_db()
 
     if df_bets:
-        total_staked = sum(b.get("Panos (€)", 0.0) for b in df_bets)
-        total_returned = sum(b.get("Paluu (€)", 0.0) for b in df_bets)
+        total_staked = sum(float(b.get("Panos (€)", 0.0) or 0.0) for b in df_bets)
+        total_returned = sum(float(b.get("Paluu (€)", 0.0) or 0.0) for b in df_bets)
         net_profit = total_returned - total_staked
+        total_roi = (net_profit / total_staked * 100) if total_staked > 0 else 0.0
 
         profit_color = "green" if net_profit >= 0 else "red"
         st.caption(
-            f"📊 Yhteensä asetettu: **{total_staked:.2f} €** | Palautukset: **{total_returned:.2f} €** | Netto: <span style='color:{profit_color};'>**{net_profit:+.2f} €**</span>",
+            f"📊 Yhteensä asetettu: **{total_staked:.2f} €** | Palautukset: **{total_returned:.2f} €** | "
+            f"Netto: <span style='color:{profit_color};'>**{net_profit:+.2f} €**</span> | "
+            f"ROI: **{total_roi:+.1f}%**",
             unsafe_allow_html=True,
         )
 
+        # Erilliset suorituskykymittarit: Malli vs. Fiilis
+        def _laske_tyyppi_mittarit(bets_lista, kohde_tyyppi):
+            suodatetut = []
+            for b in bets_lista:
+                b_type = (
+                    b.get("bet_type")
+                    or b.get("Vedon tyyppi")
+                    or bet_type_by_id.get(b.get("id"))
+                    or "Malli"
+                )
+                if b_type == kohde_tyyppi:
+                    suodatetut.append(b)
+
+            panokset = sum(float(x.get("Panos (€)", 0.0) or 0.0) for x in suodatetut)
+            palautukset = sum(float(x.get("Paluu (€)", 0.0) or 0.0) for x in suodatetut)
+            netto = palautukset - panokset
+            roi = (netto / panokset * 100) if panokset > 0 else 0.0
+            return {
+                "maara": len(suodatetut),
+                "panokset": panokset,
+                "palautukset": palautukset,
+                "netto": netto,
+                "roi": roi,
+            }
+
+        malli_m = _laske_tyyppi_mittarit(df_bets, "Malli")
+        fiilis_m = _laske_tyyppi_mittarit(df_bets, "Fiilis")
+
+        st.markdown("#### 🎯 Suorituskyky: Malli vs. Fiilis")
+        col_m, col_f = st.columns(2)
+
+        with col_m:
+            st.markdown("**🤖 Malli**")
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Vetoja", f"{malli_m['maara']}")
+            m2.metric("Netto", f"{malli_m['netto']:+.2f} €", delta=f"Panos {malli_m['panokset']:.2f} €")
+            m3.metric("ROI", f"{malli_m['roi']:+.1f}%")
+
+        with col_f:
+            st.markdown("**🔥 Fiilis**")
+            f1, f2, f3 = st.columns(3)
+            f1.metric("Vetoja", f"{fiilis_m['maara']}")
+            f2.metric("Netto", f"{fiilis_m['netto']:+.2f} €", delta=f"Panos {fiilis_m['panokset']:.2f} €")
+            f3.metric("ROI", f"{fiilis_m['roi']:+.1f}%")
+
         st.markdown("---")
-        
-# Graafiosuus selkeytettynä (päiväkohtainen kumulatiivinen tuotto)
+
+        # Graafiosuus selkeytettynä (päiväkohtainen kumulatiivinen tuotto)
         try:
             import plotly.express as px
             import pandas as pd
@@ -607,23 +767,37 @@ with tab2:
         except Exception as e:
             st.info(f"Graafin lataus ei onnistunut: {e}")
             st.markdown("---")
-        
+
         with st.expander("🗑️ Poista tai hallinnoi yksittäistä vetoa suoraan tästä"):
             if raw_bets:
                 bet_options = {}
                 for r in raw_bets:
-                    market = r.get('bet_market', '1X2')
-                    label = f"ID {r['id']} | {str(r['match_date'])[:10]} | {r['home_team']} - {r['away_team']} | [{market}] ({r['selected_pick']})"
-                    bet_options[label] = r['id']
-                
-                selected_del_label = st.selectbox("Valitse poistettava veto", list(bet_options.keys()), key="direct_del_select")
+                    market = r.get("bet_market", "1X2")
+                    b_type = r.get("bet_type") or "Malli"
+                    tyyppi_merkki = "🔥" if str(b_type).lower() == "fiilis" else f"[{b_type}]"
+                    label = (
+                        f"ID {r['id']} | {tyyppi_merkki} {str(r['match_date'])[:10]} | "
+                        f"{r['home_team']} - {r['away_team']} | [{market}] ({r['selected_pick']})"
+                    )
+                    bet_options[label] = r["id"]
+
+                selected_del_label = st.selectbox(
+                    "Valitse poistettava veto",
+                    list(bet_options.keys()),
+                    key="direct_del_select",
+                )
                 selected_del_id = bet_options[selected_del_label]
-                
+
                 col_d1, col_d2 = st.columns([2, 1])
                 with col_d1:
                     st.write(f"Valittu ID: **{selected_del_id}**")
                 with col_d2:
-                    if st.button("🗑️ Vahvista poisto", type="primary", use_container_width=True, key="confirm_delete_button"):
+                    if st.button(
+                        "🗑️ Vahvista poisto",
+                        type="primary",
+                        use_container_width=True,
+                        key="confirm_delete_button",
+                    ):
                         try:
                             del_url = f"{SUPABASE_URL}/rest/v1/bets?id=eq.{selected_del_id}"
                             del_resp = requests.delete(del_url, headers=HEADERS, timeout=5)
@@ -634,11 +808,19 @@ with tab2:
                                 st.error(f"Poisto epäonnistui: {del_resp.text}")
                         except Exception as e:
                             st.error(f"Virhe: {e}")
-
-        
-
+    if df_bets:
+        for b in df_bets:
+            b_type = (
+                b.get("bet_type")
+                or b.get("Vedon tyyppi")
+                or bet_type_by_id.get(b.get("id"))
+                or "Malli"
+            )
+            if b_type == "Fiilis" and "Valinta" in b and b["Valinta"]:
+                if not str(b["Valinta"]).startswith("🔥 "):
+                    b["Valinta"] = f"🔥 {b['Valinta']}"
     render_bet_editor(df_bets, SUPABASE_URL, HEADERS, SUPABASE_KEY)
-    
+
 # -------------------------------------------------------------------------
 # VÄLILEHTI 3: HALLINNOI VETOJA JA LISÄÄ OTTELUITA
 # -------------------------------------------------------------------------
